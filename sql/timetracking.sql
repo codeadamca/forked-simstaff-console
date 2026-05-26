@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS admins (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Default admin: username = admin | password = Admin@1234
--- Change the password after first login via the DB or add a change-password page.
 INSERT INTO admins (username, password_hash) VALUES (
     'admin',
     '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'  -- password: password

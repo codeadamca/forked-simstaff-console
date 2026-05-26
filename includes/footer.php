@@ -1,7 +1,7 @@
     <!-- includes/footer.php -->
 </main>
 <footer class="footer">
-    <p><?= APP_NAME ?> v<?= APP_VERSION ?> &mdash; SimStaff Internal Tool</p>
+    <p><?= APP_NAME ?> v<?= APP_VERSION ?> &mdash; SimStaff </p>
 </footer>
 <script src="<?= BASE_URL ?>/assets/js/app.js"></script>
 </body>

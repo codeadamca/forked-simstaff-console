@@ -51,7 +51,7 @@ $pageTitle = 'Login';
 <div class="login-card">
     <div class="login-card__logo">🏎️</div>
     <h1 class="login-card__title">F1 AutoStart</h1>
-    <p class="login-card__sub">Staff Panel</p>
+    <p class="login-card__sub">Admin Panel</p>
 
     <?php if ($error): ?>
         <div class="alert alert-error"><?= e($error) ?></div>
@@ -69,12 +69,18 @@ $pageTitle = 'Login';
 
         <div class="form-group">
             <label for="password">Password <span class="required">*</span></label>
-            <input type="password" id="password" name="password"
-                   autocomplete="current-password" required>
+            <div class="input-wrap">
+                <input type="password" id="password" name="password"
+                       autocomplete="current-password" required>
+                <button type="button" class="eye-btn" onclick="togglePassword()">
+                    <span id="eye-text">Show</span>
+                </button>
+            </div>
         </div>
 
         <button type="submit" class="btn btn--primary btn--full">Log In</button>
     </form>
 </div>
+ <script src="<?= BASE_URL ?>/assets/js/app.js"></script>
 </body>
 </html>

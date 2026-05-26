@@ -25,3 +25,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+
+
+function togglePassword() {
+    const input  = document.getElementById('password');
+    const label  = document.getElementById('eye-text');
+    const isHidden = input.type === 'password';
+    input.type   = isHidden ? 'text' : 'password';
+    label.textContent = isHidden ? 'Hide' : 'Show';
+}
