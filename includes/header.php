@@ -1,5 +1,5 @@
 <?php
-// $pageTitle should be set before including this file
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
