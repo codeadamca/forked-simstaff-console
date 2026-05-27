@@ -1,72 +1,66 @@
 <?php
-// ============================================================
-//  pages/dashboard.php  —  Event list (dashboard)
-// ============================================================
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
 requireLogin();
-checkSessionTimeout();
 
-$pdo    = getDB();
-$events = $pdo->query(
-    'SELECT * FROM events ORDER BY event_date DESC, created_at DESC'
-)->fetchAll();
+$conn   = getConnection();
+$result = $conn->query('SELECT * FROM events ORDER BY event_date DESC');
+$events = $result->fetch_all(MYSQLI_ASSOC);
+$conn->close();
 
+$flash     = getFlash();
 $pageTitle = 'Dashboard';
 include __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="page-header">
     <h2>Events</h2>
-    <a href="<?= BASE_URL ?>/pages/event_form.php" class="btn btn--primary">+ Create New Event</a>
+    <a href="event_form.php" class="btn btn--primary">+ New Event</a>
 </div>
 
-<?php if (empty($events)): ?>
-    <div class="empty-state">
-        <p>No events yet. Click <strong>+ Create New Event</strong> to get started.</p>
-    </div>
-<?php else: ?>
-    <div class="event-list">
-        <?php foreach ($events as $ev): ?>
-        <div class="event-card">
-            <div class="event-card__info">
-                <h3><?= e($ev['event_name']) ?></h3>
-                <p>
-                    <?= e(date('F j, Y', strtotime($ev['event_date']))) ?>
-                    <?php if ($ev['location']): ?> | <?= e($ev['location']) ?><?php endif; ?>
-                </p>
-            </div>
-            <div class="event-card__actions">
-                <a href="<?= BASE_URL ?>/pages/event_detail.php?id=<?= $ev['event_id'] ?>"
-                   class="btn btn--sm">View</a>
-                <a href="<?= BASE_URL ?>/pages/event_form.php?id=<?= $ev['event_id'] ?>"
-                   class="btn btn--sm btn--outline">Edit</a>
-                <button class="btn btn--sm btn--danger"
-                        onclick="confirmDelete(<?= $ev['event_id'] ?>, '<?= e(addslashes($ev['event_name'])) ?>')">
-                    Delete
-                </button>
-            </div>
-        </div>
-        <?php endforeach; ?>
-    </div>
-<?php endif; ?>
+<?php if ($flash) { ?>
+    <p class="alert alert--<?php echo $flash['type']; ?>"><?php echo $flash['message']; ?></p>
+<?php } ?>
 
-<!-- Hidden delete form -->
-<form id="deleteEventForm" method="POST" action="<?= BASE_URL ?>/pages/event_delete.php">
-    <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
-    <input type="hidden" name="event_id" id="deleteEventId">
-</form>
-
-<script>
-function confirmDelete(id, name) {
-    if (confirm('Are you sure you want to delete "' + name + '"?\nThis will also remove ALL associated sessions.')) {
-        document.getElementById('deleteEventId').value = id;
-        document.getElementById('deleteEventForm').submit();
-    }
-}
-</script>
+<?php if (count($events) == 0) { ?>
+    <p class="empty-state">No events yet. Create one to get started.</p>
+<?php } else { ?>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Event</th>
+                <th>Date</th>
+                <th>Location</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($events as $event) { ?>
+            <tr>
+                <td>
+                    <a href="event_detail.php?id=<?php echo $event['event_id']; ?>">
+                        <?php echo htmlspecialchars($event['event_name']); ?>
+                    </a>
+                </td>
+                <td><?php echo date('M j, Y', strtotime($event['event_date'])); ?></td>
+                <td><?php echo htmlspecialchars($event['location']); ?></td>
+                <td class="actions">
+                    <a href="event_form.php?id=<?php echo $event['event_id']; ?>" class="btn btn--outline">Edit</a>
+                    <form method="POST" action="event_delete.php" style="display:inline">
+                        <input type="hidden" name="event_id" value="<?php echo $event['event_id']; ?>">
+                        <button type="submit" class="btn btn--danger"
+                            onclick="return confirm('Delete this event and all its sessions?')">
+                            Delete
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            <?php } ?>
+        </tbody>
+    </table>
+<?php } ?>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

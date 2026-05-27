@@ -1,79 +1,47 @@
 <?php
-// ============================================================
-//  api/session.php  —  Python AutoStart POST endpoint (Phase 2)
-//  Method: POST
-//  Content-Type: application/json
-//  Payload: { event_id, participant_name, car, track, best_lap_time, api_key }
-// ============================================================
+// POST endpoint for Python to submit a lap time
+// Payload: {event_id, participant_name, car, track, best_lap_time, api_key}
+
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/db.php';
-require_once __DIR__ . '/../includes/helpers.php';
 
 header('Content-Type: application/json');
 
-// Only allow POST
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if ($_SERVER['REQUEST_METHOD'] != 'POST') {
     http_response_code(405);
-    echo json_encode(['error' => 'Method Not Allowed']);
-    exit;
+    echo json_encode(['error' => 'POST only']);
+    exit();
 }
 
-// Parse JSON body
-$body = json_decode(file_get_contents('php://input'), true);
-if (!$body) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Invalid JSON body']);
-    exit;
-}
+$data = json_decode(file_get_contents('php://input'), true);
 
-// Validate API key
-$apiKey = $body['api_key'] ?? '';
-if (!hash_equals(API_SECRET_KEY, $apiKey)) {
+// Basic API key check
+if (($data['api_key'] ?? '') != 'changeme123') {
     http_response_code(401);
     echo json_encode(['error' => 'Unauthorized']);
-    exit;
+    exit();
 }
 
-// Validate required fields
-$required = ['event_id', 'participant_name', 'best_lap_time'];
-foreach ($required as $field) {
-    if (empty($body[$field])) {
-        http_response_code(422);
-        echo json_encode(['error' => 'Validation failed', 'missing' => $field]);
-        exit;
-    }
+$eventId         = (int)($data['event_id']         ?? 0);
+$participantName = trim($data['participant_name']   ?? '');
+$car             = trim($data['car']                ?? '');
+$track           = trim($data['track']              ?? '');
+$bestLapTime     = trim($data['best_lap_time']      ?? '');
+
+if ($eventId == 0 || $participantName == '' || $bestLapTime == '') {
+    http_response_code(400);
+    echo json_encode(['error' => 'Missing required fields']);
+    exit();
 }
 
-$eventId        = (int)$body['event_id'];
-$participantName = trim($body['participant_name']);
-$car            = trim($body['car']   ?? '');
-$track          = trim($body['track'] ?? '');
-$lapTime        = trim($body['best_lap_time']);
-
-// Validate lap time format
-if (!isValidLapTime($lapTime)) {
-    http_response_code(422);
-    echo json_encode(['error' => 'Invalid lap time format. Use mm:ss.mmm']);
-    exit;
-}
-
-// Verify event exists
-$pdo  = getDB();
-$stmt = $pdo->prepare('SELECT event_id FROM events WHERE event_id = ? LIMIT 1');
-$stmt->execute([$eventId]);
-if (!$stmt->fetch()) {
-    http_response_code(422);
-    echo json_encode(['error' => 'Event not found']);
-    exit;
-}
-
-// Insert session
-$stmt = $pdo->prepare(
-    'INSERT INTO sessions (event_id, participant_name, car, track, best_lap_time, source)
-     VALUES (?,?,?,?,?,\'api\')'
+$conn = getConnection();
+$stmt = $conn->prepare(
+    'INSERT INTO sessions (event_id, participant_name, car, track, best_lap_time) VALUES (?, ?, ?, ?, ?)'
 );
-$stmt->execute([$eventId, $participantName, $car, $track, $lapTime]);
-$sessionId = (int)$pdo->lastInsertId();
+$stmt->bind_param('issss', $eventId, $participantName, $car, $track, $bestLapTime);
+$stmt->execute();
+$newId = $stmt->insert_id;
+$stmt->close();
+$conn->close();
 
-http_response_code(200);
-echo json_encode(['status' => 'ok', 'session_id' => $sessionId]);
+echo json_encode(['success' => true, 'session_id' => $newId]);

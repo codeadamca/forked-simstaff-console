@@ -1,121 +1,120 @@
 <?php
-// ============================================================
-//  pages/event_form.php  —  Create / Edit an event
-// ============================================================
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
 requireLogin();
-checkSessionTimeout();
 
-$pdo      = getDB();
-$eventId  = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$isEdit   = $eventId > 0;
-$errors   = [];
-$values   = ['event_name' => '', 'event_date' => '', 'location' => '', 'notes' => ''];
+$conn    = getConnection();
+$eventId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$isEdit  = $eventId > 0;
+$errors  = [];
+$values  = ['event_name' => '', 'event_date' => '', 'location' => '', 'notes' => ''];
 
-// Load existing event for edit mode
+// Load existing event if editing
 if ($isEdit) {
-    $stmt = $pdo->prepare('SELECT * FROM events WHERE event_id = ? LIMIT 1');
-    $stmt->execute([$eventId]);
-    $event = $stmt->fetch();
+    $stmt = $conn->prepare('SELECT * FROM events WHERE event_id = ? LIMIT 1');
+    $stmt->bind_param('i', $eventId);
+    $stmt->execute();
+    $event = $stmt->get_result()->fetch_assoc();
+
     if (!$event) {
-        setFlash('error', 'Event not found.');
-        redirect('pages/dashboard.php');
+        header('Location: dashboard.php');
+        exit();
     }
+
     $values = $event;
+    $stmt->close();
 }
 
-// Handle POST
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    verifyCsrf();
-
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $values['event_name'] = trim($_POST['event_name'] ?? '');
     $values['event_date'] = trim($_POST['event_date'] ?? '');
     $values['location']   = trim($_POST['location']   ?? '');
     $values['notes']      = trim($_POST['notes']      ?? '');
 
-    // Validation
-    if ($values['event_name'] === '') $errors[] = 'Event name is required.';
-    if ($values['event_date'] === '') {
-        $errors[] = 'Please enter a valid date.';
-    } elseif (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $values['event_date'])) {
-        $errors[] = 'Date must be in YYYY-MM-DD format.';
-    }
+    if ($values['event_name'] == '') $errors[] = 'Event name is required.';
+    if ($values['event_date'] == '') $errors[] = 'Date is required.';
 
-    if (empty($errors)) {
+    if (count($errors) == 0) {
         if ($isEdit) {
-            $stmt = $pdo->prepare(
+            $stmt = $conn->prepare(
                 'UPDATE events SET event_name=?, event_date=?, location=?, notes=? WHERE event_id=?'
             );
-            $stmt->execute([
-                $values['event_name'], $values['event_date'],
-                $values['location'],   $values['notes'], $eventId
-            ]);
-            setFlash('success', 'Event updated.');
-        } else {
-            $stmt = $pdo->prepare(
-                'INSERT INTO events (event_name, event_date, location, notes) VALUES (?,?,?,?)'
+            $stmt->bind_param(
+                'ssssi',
+                $values['event_name'],
+                $values['event_date'],
+                $values['location'],
+                $values['notes'],
+                $eventId
             );
-            $stmt->execute([
-                $values['event_name'], $values['event_date'],
-                $values['location'],   $values['notes']
-            ]);
-            setFlash('success', 'Event created successfully.');
+        } else {
+            $stmt = $conn->prepare(
+                'INSERT INTO events (event_name, event_date, location, notes) VALUES (?, ?, ?, ?)'
+            );
+            $stmt->bind_param(
+                'ssss',
+                $values['event_name'],
+                $values['event_date'],
+                $values['location'],
+                $values['notes']
+            );
         }
-        redirect('pages/dashboard.php');
+
+        $stmt->execute();
+        $stmt->close();
+        $conn->close();
+
+        setFlash('success', $isEdit ? 'Event updated.' : 'Event created.');
+        header('Location: dashboard.php');
+        exit();
     }
 }
 
-$pageTitle = $isEdit ? 'Edit Event' : 'Create Event';
+$conn->close();
+
+$pageTitle = $isEdit ? 'Edit Event' : 'New Event';
 include __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="page-header">
-    <a href="<?= BASE_URL ?>/pages/dashboard.php" class="back-link">← Back to Events</a>
+    <a href="dashboard.php" class="back-link">← Back</a>
+    <h2><?php echo $pageTitle; ?></h2>
 </div>
-<h2><?= $isEdit ? 'Edit Event' : 'Create New Event' ?></h2>
 
-<?php if ($errors): ?>
-    <div class="alert alert-error">
-        <ul><?php foreach ($errors as $e): ?><li><?= e($e) ?></li><?php endforeach; ?></ul>
+<?php if (count($errors) > 0) { ?>
+    <div class="alert alert--error">
+        <?php foreach ($errors as $err) { ?>
+            <p><?php echo $err; ?></p>
+        <?php } ?>
     </div>
-<?php endif; ?>
+<?php } ?>
 
-<form method="POST" action="" class="card-form">
-    <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
-
+<form method="POST" class="form">
     <div class="form-group">
-        <label for="event_name">Event Name <span class="required">*</span></label>
-        <input type="text" id="event_name" name="event_name"
-               value="<?= e($values['event_name']) ?>" required>
+        <label>Event Name</label>
+        <input type="text" name="event_name"
+               value="<?php echo htmlspecialchars($values['event_name']); ?>" required>
     </div>
-
     <div class="form-group">
-        <label for="event_date">Date <span class="required">*</span></label>
-        <input type="date" id="event_date" name="event_date"
-               value="<?= e($values['event_date']) ?>" required>
+        <label>Date</label>
+        <input type="date" name="event_date"
+               value="<?php echo htmlspecialchars($values['event_date']); ?>" required>
     </div>
-
     <div class="form-group">
-        <label for="location">Location</label>
-        <input type="text" id="location" name="location"
-               value="<?= e($values['location']) ?>">
+        <label>Location</label>
+        <input type="text" name="location"
+               value="<?php echo htmlspecialchars($values['location']); ?>">
     </div>
-
     <div class="form-group">
-        <label for="notes">Notes</label>
-        <textarea id="notes" name="notes" rows="3"><?= e($values['notes']) ?></textarea>
+        <label>Notes</label>
+        <textarea name="notes" rows="4"><?php echo htmlspecialchars($values['notes']); ?></textarea>
     </div>
-
-    <div class="form-actions">
-        <button type="submit" class="btn btn--primary">
-            <?= $isEdit ? 'Save Changes' : 'Create Event' ?>
-        </button>
-        <a href="<?= BASE_URL ?>/pages/dashboard.php" class="btn btn--outline">Cancel</a>
-    </div>
+    <button type="submit" class="btn btn--primary">
+        <?php echo $isEdit ? 'Save Changes' : 'Create Event'; ?>
+    </button>
 </form>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

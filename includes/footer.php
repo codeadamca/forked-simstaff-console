@@ -1,8 +1,7 @@
-    <!-- includes/footer.php -->
 </main>
 <footer class="footer">
-    <p><?= APP_NAME ?> v<?= APP_VERSION ?> &mdash; SimStaff </p>
+    <?php echo APP_NAME; ?> &copy; <?php echo date('Y'); ?>
 </footer>
-<script src="<?= BASE_URL ?>/assets/js/app.js"></script>
+<script src="<?php echo BASE_URL; ?>/../assets/js/app.js"></script>
 </body>
 </html>
