@@ -22,11 +22,11 @@ if (($data['api_key'] ?? '') != 'changeme123') {
     exit();
 }
 
-$eventId         = (int)($data['event_id']         ?? 0);
-$participantName = trim($data['participant_name']   ?? '');
-$car             = trim($data['car']                ?? '');
-$track           = trim($data['track']              ?? '');
-$bestLapTime     = trim($data['best_lap_time']      ?? '');
+$eventId = (int)($data['event_id']?? 0);
+$participantName = trim($data['participant_name'] ?? '');
+$car = trim($data['car']?? '');
+$track = trim($data['track']  ?? '');
+$bestLapTime = trim($data['best_lap_time'] ?? '');
 
 if ($eventId == 0 || $participantName == '' || $bestLapTime == '') {
     http_response_code(400);

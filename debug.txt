@@ -1,0 +1,29 @@
+Array
+(
+    [session_id] => 1
+    [laps] => Array
+        (
+            [0] => Array
+                (
+                    [lap_number] => 1
+                    [lap_time_ms] => 2001
+                    [lap_time] => 00:02
+                )
+
+            [1] => Array
+                (
+                    [lap_number] => 2
+                    [lap_time_ms] => 2055
+                    [lap_time] => 00:02
+                )
+
+            [2] => Array
+                (
+                    [lap_number] => 3
+                    [lap_time_ms] => 3797
+                    [lap_time] => 00:03
+                )
+
+        )
+
+)
