@@ -1,141 +1,321 @@
 <?php
-// ============================================================
-//  pages/session_form.php  —  Add / Edit a session
-// ============================================================
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
 requireLogin();
-checkSessionTimeout();
 
-$pdo       = getDB();
-$sessionId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$eventId   = (int)($_GET['event_id'] ?? $_POST['event_id'] ?? 0);
+$conn = getConnection();
+
+$eventId   = (int) ($_POST['event_id'] ?? $_GET['event_id'] ?? 0);
+$sessionId = (int) ($_GET['id'] ?? 0);
 $isEdit    = $sessionId > 0;
-$errors    = [];
-$values    = ['participant_name' => '', 'car' => '', 'track' => '', 'best_lap_time' => ''];
 
-// Validate event exists
-$stmt = $pdo->prepare('SELECT event_id, event_name FROM events WHERE event_id = ? LIMIT 1');
-$stmt->execute([$eventId]);
-$event = $stmt->fetch();
-if (!$event) {
-    setFlash('error', 'Event not found.');
-    redirect('pages/dashboard.php');
+// ── Load all events for the dropdown ──────────────────────
+$events = $conn->query('SELECT event_id, event_name FROM events ORDER BY event_date DESC')
+               ->fetch_all(MYSQLI_ASSOC);
+
+// ── Load all game versions for dropdowns ──────────────────
+$versions = $conn->query('SELECT id, name FROM game_versions ORDER BY name ASC')
+                 ->fetch_all(MYSQLI_ASSOC);
+
+// ── Defaults ──────────────────────────────────────────────
+$event           = null;
+$participantName = '';
+$bestLapTime     = '';
+$f1Version       = '';
+$car             = '';
+$track           = '';
+$selectedVersion = 0;
+$cars            = [];
+$tracks          = [];
+$racers          = [];
+$error           = '';
+
+// ── Load event ────────────────────────────────────────────
+if ($eventId > 0) {
+    $stmt = $conn->prepare('SELECT * FROM events WHERE event_id = ? LIMIT 1');
+    $stmt->bind_param('i', $eventId);
+    $stmt->execute();
+    $event = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
 }
 
-// Load existing session for edit
+// ── Load existing session if editing ─────────────────────
 if ($isEdit) {
-    $stmt = $pdo->prepare('SELECT * FROM sessions WHERE session_id = ? AND event_id = ? LIMIT 1');
-    $stmt->execute([$sessionId, $eventId]);
-    $session = $stmt->fetch();
-    if (!$session) {
-        setFlash('error', 'Session not found.');
-        redirect('pages/event_detail.php?id=' . $eventId);
-    }
-    $values = $session;
-}
+    $stmt = $conn->prepare('SELECT * FROM sessions WHERE session_id = ? LIMIT 1');
+    $stmt->bind_param('i', $sessionId);
+    $stmt->execute();
+    $session = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
 
-// Handle POST
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    verifyCsrf();
+    if ($session) {
+        $participantName = $session['participant_name'];
+        $bestLapTime     = $session['best_lap_time'];
+        $f1Version       = $session['f1_version'] ?? '';
+        $car             = $session['car'];
+        $track           = $session['track'];
+        $eventId         = $session['event_id'];
 
-    $values['participant_name'] = trim($_POST['participant_name'] ?? '');
-    $values['car']              = trim($_POST['car']              ?? '');
-    $values['track']            = trim($_POST['track']            ?? '');
-    $values['best_lap_time']    = trim($_POST['best_lap_time']    ?? '');
-
-    if ($values['participant_name'] === '') $errors[] = 'Participant name is required.';
-    if ($values['best_lap_time']    === '') {
-        $errors[] = 'Lap time is required.';
-    } elseif (!isValidLapTime($values['best_lap_time'])) {
-        $errors[] = 'Lap time format is invalid. Use mm:ss.mmm (e.g., 01:23.456).';
-    }
-
-    if (empty($errors)) {
-        if ($isEdit) {
-            $stmt = $pdo->prepare(
-                'UPDATE sessions SET participant_name=?, car=?, track=?, best_lap_time=? WHERE session_id=?'
-            );
-            $stmt->execute([
-                $values['participant_name'], $values['car'],
-                $values['track'], $values['best_lap_time'], $sessionId
-            ]);
-            setFlash('success', 'Session updated.');
-        } else {
-            $stmt = $pdo->prepare(
-                'INSERT INTO sessions (event_id, participant_name, car, track, best_lap_time, source)
-                 VALUES (?,?,?,?,?,\'manual\')'
-            );
-            $stmt->execute([
-                $eventId, $values['participant_name'],
-                $values['car'], $values['track'], $values['best_lap_time']
-            ]);
-            setFlash('success', 'Session recorded successfully.');
+        // Load event if not already loaded
+        if (!$event) {
+            $stmt = $conn->prepare('SELECT * FROM events WHERE event_id = ? LIMIT 1');
+            $stmt->bind_param('i', $eventId);
+            $stmt->execute();
+            $event = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
         }
-        redirect('pages/event_detail.php?id=' . $eventId);
+
+        // Find matching version id for dropdowns
+        foreach ($versions as $v) {
+            if ($v['name'] === $f1Version) {
+                $selectedVersion = $v['id'];
+                break;
+            }
+        }
+    } else {
+        header('Location: dashboard.php');
+        exit();
     }
 }
+
+// ── Load cars/tracks/racers if version is known ───────────
+if ($selectedVersion > 0) {
+    $stmt = $conn->prepare('SELECT name FROM game_cars WHERE version_id = ? ORDER BY name ASC');
+    $stmt->bind_param('i', $selectedVersion);
+    $stmt->execute();
+    $cars = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $stmt = $conn->prepare('SELECT name FROM game_tracks WHERE version_id = ? ORDER BY name ASC');
+    $stmt->bind_param('i', $selectedVersion);
+    $stmt->execute();
+    $tracks = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $stmt = $conn->prepare('SELECT name FROM game_racers WHERE version_id = ? ORDER BY name ASC');
+    $stmt->bind_param('i', $selectedVersion);
+    $stmt->execute();
+    $racers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+}
+
+// ── Handle POST ───────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['participant_name'])) {
+    $participantName = trim($_POST['participant_name'] ?? '');
+    $bestLapTime     = trim($_POST['best_lap_time']    ?? '');
+    $f1Version       = trim($_POST['f1_version']       ?? '');
+    $car             = trim($_POST['car']              ?? '');
+    $track           = trim($_POST['track']            ?? '');
+    $eventId         = (int) ($_POST['event_id']       ?? 0);
+
+    if ($participantName === '') {
+        $error = 'Participant name is required.';
+    } elseif ($eventId === 0) {
+        $error = 'Please select an event.';
+    } elseif ($f1Version === '') {
+        $error = 'Please select a game version.';
+    } elseif ($car === '') {
+        $error = 'Please select a car.';
+    } elseif ($track === '') {
+        $error = 'Please select a track.';
+    } else {
+        if ($isEdit) {
+            $stmt = $conn->prepare(
+                'UPDATE sessions SET participant_name = ?, best_lap_time = ?, f1_version = ?, car = ?, track = ? WHERE session_id = ?'
+            );
+            $stmt->bind_param('sssssi', $participantName, $bestLapTime, $f1Version, $car, $track, $sessionId);
+        } else {
+            $stmt = $conn->prepare(
+                'INSERT INTO sessions (event_id, participant_name, best_lap_time, f1_version, car, track) VALUES (?, ?, ?, ?, ?, ?)'
+            );
+            $stmt->bind_param('isssss', $eventId, $participantName, $bestLapTime, $f1Version, $car, $track);
+        }
+        $stmt->execute();
+        $stmt->close();
+        $conn->close();
+
+        setFlash('success', $isEdit ? 'Session updated.' : 'Session added.');
+        header('Location: event_detail.php?id=' . $eventId);
+        exit();
+    }
+}
+
+$conn->close();
 
 $pageTitle = $isEdit ? 'Edit Session' : 'Add Session';
 include __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="page-header">
-    <a href="<?= BASE_URL ?>/pages/event_detail.php?id=<?= $eventId ?>" class="back-link">
-        ← Back to <?= e($event['event_name']) ?>
-    </a>
+    <a href="event_detail.php?id=<?= $eventId ?>" class="back-link">← Back to Event</a>
+    <h2><?= $isEdit ? 'Edit Session' : 'Add Session' ?></h2>
 </div>
-<h2><?= $isEdit ? 'Edit Session' : 'Add New Session' ?></h2>
 
-<?php if ($errors): ?>
-    <div class="alert alert-error">
-        <ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul>
-    </div>
+<?php if ($error): ?>
+    <div class="alert alert--danger"><?= htmlspecialchars($error) ?></div>
 <?php endif; ?>
 
-<form method="POST" action="" class="card-form">
-    <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
-    <input type="hidden" name="event_id"   value="<?= $eventId ?>">
+<form method="POST" id="sessionForm" class="form-card">
 
+    <!-- Event -->
+    <?php if (!$isEdit): ?>
+        <div class="form-group">
+            <label for="event_id">Event</label>
+            <select id="event_id" name="event_id" required
+                    onchange="window.location.href='session_form.php?event_id=' + this.value">
+                <option value="">— Select Event —</option>
+                <?php foreach ($events as $ev): ?>
+                    <option value="<?= $ev['event_id'] ?>"
+                        <?= $ev['event_id'] == $eventId ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($ev['event_name']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    <?php else: ?>
+        <p class="form-readonly">Event: <strong><?= htmlspecialchars($event['event_name'] ?? '—') ?></strong></p>
+        <input type="hidden" name="event_id" value="<?= $eventId ?>">
+    <?php endif; ?>
+
+    <!-- Game Version -->
     <div class="form-group">
-        <label for="participant_name">Participant Name <span class="required">*</span></label>
-        <input type="text" id="participant_name" name="participant_name"
-               value="<?= e($values['participant_name']) ?>" required autofocus>
+        <label for="sel-version">🎮 Game Version</label>
+        <select id="sel-version" name="f1_version" required>
+            <option value="">— Select Version —</option>
+            <?php foreach ($versions as $v): ?>
+                <option value="<?= htmlspecialchars($v['name']) ?>"
+                        data-id="<?= $v['id'] ?>"
+                    <?= $v['name'] === $f1Version ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($v['name']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
     </div>
 
-    <div class="form-row">
-        <div class="form-group">
-            <label for="car">Car <span class="optional">(optional)</span></label>
-            <input type="text" id="car" name="car"
-                   placeholder="e.g. Red Bull RB20"
-                   value="<?= e($values['car'] ?? '') ?>">
-        </div>
-        <div class="form-group">
-            <label for="track">Track <span class="optional">(optional)</span></label>
-            <input type="text" id="track" name="track"
-                   placeholder="e.g. Monza"
-                   value="<?= e($values['track'] ?? '') ?>">
-        </div>
+    <!-- Track -->
+    <div class="form-group">
+        <label for="sel-track">🏁 Track</label>
+        <select id="sel-track" name="track" required <?= $selectedVersion === 0 ? 'disabled' : '' ?>>
+            <option value="">— Select Version First —</option>
+            <?php foreach ($tracks as $t): ?>
+                <option value="<?= htmlspecialchars($t['name']) ?>"
+                    <?= $t['name'] === $track ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($t['name']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
     </div>
 
+    <!-- Car -->
     <div class="form-group">
-        <label for="best_lap_time">Best Lap Time <span class="required">*</span> <small>(mm:ss.mmm)</small></label>
+        <label for="sel-car">🚗 Car</label>
+        <select id="sel-car" name="car" required <?= $selectedVersion === 0 ? 'disabled' : '' ?>>
+            <option value="">— Select Version First —</option>
+            <?php foreach ($cars as $c): ?>
+                <option value="<?= htmlspecialchars($c['name']) ?>"
+                    <?= $c['name'] === $car ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($c['name']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+
+    <!-- Racer -->
+    <div class="form-group">
+        <label for="sel-racer">👤 Racer / Participant</label>
+        <select id="sel-racer" name="participant_name" required <?= $selectedVersion === 0 ? 'disabled' : '' ?>>
+            <option value="">— Select Version First —</option>
+            <?php foreach ($racers as $r): ?>
+                <option value="<?= htmlspecialchars($r['name']) ?>"
+                    <?= $r['name'] === $participantName ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($r['name']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+
+    <!-- Best Lap Time -->
+    <div class="form-group">
+        <label for="best_lap_time">Best Lap Time</label>
         <input type="text" id="best_lap_time" name="best_lap_time"
-               placeholder="01:23.456"
-               pattern="\d{2}:\d{2}\.\d{3}"
-               value="<?= e($values['best_lap_time']) ?>" required>
-        <span class="field-hint">Format: mm:ss.mmm — e.g. 01:23.456</span>
+               value="<?= htmlspecialchars($bestLapTime) ?>"
+               placeholder="e.g. 1:23.456">
+        <small>Leave blank if session hasn't been run yet.</small>
     </div>
 
     <div class="form-actions">
         <button type="submit" class="btn btn--primary">
-            <?= $isEdit ? 'Save Changes' : 'Save Session' ?>
+            <?= $isEdit ? 'Update Session' : 'Save Session' ?>
         </button>
-        <a href="<?= BASE_URL ?>/pages/event_detail.php?id=<?= $eventId ?>" class="btn btn--outline">Cancel</a>
+        <a href="event_detail.php?id=<?= $eventId ?>" class="btn btn--outline">Cancel</a>
     </div>
+
 </form>
+
+<script>
+(function () {
+    const selVersion = document.getElementById('sel-version');
+    const selTrack   = document.getElementById('sel-track');
+    const selCar     = document.getElementById('sel-car');
+    const selRacer   = document.getElementById('sel-racer');
+
+    // Saved values to re-select after AJAX reload
+    const savedTrack  = <?= json_encode($track) ?>;
+    const savedCar    = <?= json_encode($car) ?>;
+    const savedRacer  = <?= json_encode($participantName) ?>;
+
+    function resetSelect(el, placeholder) {
+        el.innerHTML = `<option value="">${placeholder}</option>`;
+        el.disabled = true;
+    }
+
+    function populate(el, items, savedValue, placeholder) {
+        el.innerHTML = `<option value="">${placeholder}</option>`;
+        items.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item.name;
+            opt.textContent = item.name;
+            if (item.name === savedValue) opt.selected = true;
+            el.appendChild(opt);
+        });
+        el.disabled = items.length === 0;
+    }
+
+    async function loadOptions(versionId) {
+        resetSelect(selTrack,  '— Loading... —');
+        resetSelect(selCar,    '— Loading... —');
+        resetSelect(selRacer,  '— Loading... —');
+
+        const [tracks, cars, racers] = await Promise.all([
+            fetch(`../api/get_options.php?type=tracks&version_id=${versionId}`).then(r => r.json()),
+            fetch(`../api/get_options.php?type=cars&version_id=${versionId}`).then(r => r.json()),
+            fetch(`../api/get_options.php?type=racers&version_id=${versionId}`).then(r => r.json()),
+        ]);
+
+        populate(selTrack,  tracks,  savedTrack,  tracks.length  ? '— Select Track —'  : '— No tracks —');
+        populate(selCar,    cars,    savedCar,    cars.length    ? '— Select Car —'    : '— No cars —');
+        populate(selRacer,  racers,  savedRacer,  racers.length  ? '— Select Racer —'  : '— No racers —');
+    }
+
+    selVersion.addEventListener('change', function () {
+        const opt = this.options[this.selectedIndex];
+        const versionId = opt.dataset.id;
+        if (versionId) {
+            loadOptions(versionId);
+        } else {
+            resetSelect(selTrack,  '— Select Version First —');
+            resetSelect(selCar,    '— Select Version First —');
+            resetSelect(selRacer,  '— Select Version First —');
+        }
+    });
+
+    // Auto-load on page load if version already selected (edit mode)
+    <?php if ($selectedVersion > 0): ?>
+    loadOptions(<?= $selectedVersion ?>);
+    <?php endif; ?>
+})();
+</script>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

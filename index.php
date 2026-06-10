@@ -1,86 +1,66 @@
 <?php
-// ============================================================
-//  index.php  —  Login page
-// ============================================================
 require_once __DIR__ . '/config/config.php';
 require_once __DIR__ . '/config/db.php';
-require_once __DIR__ . '/includes/auth.php';
-require_once __DIR__ . '/includes/helpers.php';
 
-// Already logged in → go to dashboard
+// Already logged in, skip
 if (!empty($_SESSION['admin_id'])) {
-    redirect('pages/dashboard.php');
+    header('Location: pages/dashboard.php');
+    exit();
 }
 
 $error = '';
 
-// Handle URL messages (session expired, logged out)
-$msg = $_GET['msg'] ?? '';
-if ($msg === 'session_expired') {
-    $error = 'Your session has ended. Please log in again.';
-} elseif ($msg === 'logged_out') {
-    $error = ''; // silent logout
-}
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $username = trim($_POST['username']);
+    $password = trim($_POST['password']);
 
-// Handle POST
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username'] ?? '');
-    $password = $_POST['password'] ?? '';
+    $conn = getConnection();
 
-    if ($username === '' || $password === '') {
-        $error = 'Please enter both username and password.';
-    } elseif (attemptLogin($username, $password)) {
-        setFlash('success', 'Welcome back, ' . $username . '!');
-        redirect('pages/dashboard.php');
+    $stmt = $conn->prepare('SELECT admin_id, username, password_hash FROM admins WHERE username = ?');
+    $stmt->bind_param('s', $username);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $admin  = $result->fetch_assoc();
+
+// var_dump($admin);
+// var_dump(password_verify($password, $admin['password_hash']));
+// exit();
+
+    if ($admin && password_verify($password, $admin['password_hash'])) {
+        $_SESSION['admin_id'] = $admin['admin_id'];
+        $_SESSION['username'] = $admin['username'];
+        header('Location: pages/dashboard.php');
+        exit();
     } else {
-        $error = 'Invalid username or password. Please try again.';
+        $error = 'Wrong username or password.';
     }
-}
 
-$pageTitle = 'Login';
+    $stmt->close();
+    $conn->close();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login — <?= APP_NAME ?></title>
-    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/style.css">
+    <title>Login — <?php echo APP_NAME; ?></title>
+    <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body class="login-page">
-<div class="login-card">
-    <div class="login-card__logo">🏎️</div>
-    <h1 class="login-card__title">F1 AutoStart</h1>
-    <p class="login-card__sub">Admin Panel</p>
 
-    <?php if ($error): ?>
-        <div class="alert alert-error"><?= e($error) ?></div>
-    <?php endif; ?>
+<div class="login-box">
+    <h2><?php echo APP_NAME; ?></h2>
 
-    <form method="POST" action="">
-        <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
+    <?php if ($error != '') { ?>
+        <p class="alert alert--error"><?php echo $error; ?></p>
+    <?php } ?>
 
-        <div class="form-group">
-            <label for="username">Username <span class="required">*</span></label>
-            <input type="text" id="username" name="username"
-                   value="<?= e($_POST['username'] ?? '') ?>"
-                   autocomplete="username" required autofocus>
-        </div>
-
-        <div class="form-group">
-            <label for="password">Password <span class="required">*</span></label>
-            <div class="input-wrap">
-                <input type="password" id="password" name="password"
-                       autocomplete="current-password" required>
-                <button type="button" class="eye-btn" onclick="togglePassword()">
-                    <span id="eye-text">Show</span>
-                </button>
-            </div>
-        </div>
-
-        <button type="submit" class="btn btn--primary btn--full">Log In</button>
+    <form method="POST">
+        <input type="text" name="username" placeholder="Username" required>
+        <input type="password" name="password" placeholder="Password" required>
+        <button type="submit" class="btn btn--primary">Login</button>
     </form>
 </div>
- <script src="<?= BASE_URL ?>/assets/js/app.js"></script>
+
 </body>
 </html>

@@ -1,79 +1,140 @@
 <?php
-// ============================================================
-//  api/session.php  —  Python AutoStart POST endpoint (Phase 2)
-//  Method: POST
-//  Content-Type: application/json
-//  Payload: { event_id, participant_name, car, track, best_lap_time, api_key }
-// ============================================================
+// API endpoint for simulator session lookup
+// GET actions:
+//   ?action=events
+//   ?action=sessions&event_id=1
+//   ?action=session&session_id=1
+//   ?action=next
+
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/db.php';
-require_once __DIR__ . '/../includes/helpers.php';
 
 header('Content-Type: application/json');
+$conn = getConnection();
 
-// Only allow POST
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $action = $_GET['action'] ?? 'events';
+
+    // ── GET /api/session.php?action=sessions&event_id=1 ──
+    if ($action === 'sessions' && !empty($_GET['event_id'])) {
+        $eventId = (int) $_GET['event_id'];
+        $stmt = $conn->prepare('SELECT * FROM sessions WHERE event_id = ? ORDER BY session_id DESC');
+        $stmt->bind_param('i', $eventId);
+        $stmt->execute();
+        $sessions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        echo json_encode(['success' => true, 'sessions' => $sessions]);
+        exit();
+    }
+
+    // ── GET /api/session.php?action=session&session_id=1 ──
+    if ($action === 'session' && !empty($_GET['session_id'])) {
+        $sessionId = (int) $_GET['session_id'];
+
+        $stmt = $conn->prepare('SELECT * FROM sessions WHERE session_id = ? LIMIT 1');
+        $stmt->bind_param('i', $sessionId);
+        $stmt->execute();
+        $session = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$session) {
+            echo json_encode(['success' => false, 'error' => 'Session not found']);
+            exit();
+        }
+
+        // Include laps
+        $lapsStmt = $conn->prepare('SELECT * FROM laps WHERE session_id = ? ORDER BY lap_number ASC');
+        $lapsStmt->bind_param('i', $sessionId);
+        $lapsStmt->execute();
+        $laps = $lapsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $lapsStmt->close();
+
+        // Include event
+        $event = null;
+        if (!empty($session['event_id'])) {
+            $e = $conn->prepare('SELECT * FROM events WHERE event_id = ? LIMIT 1');
+            $e->bind_param('i', $session['event_id']);
+            $e->execute();
+            $event = $e->get_result()->fetch_assoc();
+            $e->close();
+        }
+
+        echo json_encode([
+            'success' => true,
+            'session' => $session,
+            'laps'    => $laps,
+            'event'   => $event,
+        ]);
+        exit();
+    }
+
+    // ── GET /api/session.php?action=next ──
+    if ($action === 'next') {
+        $stmt = $conn->prepare('SELECT * FROM sessions ORDER BY session_id DESC LIMIT 1');
+        $stmt->execute();
+        $nextSession = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$nextSession) {
+            echo json_encode(['success' => false, 'message' => 'No sessions found']);
+            exit();
+        }
+
+        $event = null;
+        if (!empty($nextSession['event_id'])) {
+            $e = $conn->prepare('SELECT * FROM events WHERE event_id = ? LIMIT 1');
+            $e->bind_param('i', $nextSession['event_id']);
+            $e->execute();
+            $event = $e->get_result()->fetch_assoc();
+            $e->close();
+        }
+
+        echo json_encode(['success' => true, 'next' => $nextSession, 'event' => $event]);
+        exit();
+    }
+
+    // ── GET /api/session.php?action=events (default) ──
+    $result = $conn->query('SELECT * FROM events ORDER BY event_date DESC');
+    $events = $result->fetch_all(MYSQLI_ASSOC);
+    echo json_encode(['success' => true, 'events' => $events]);
+    exit();
+}
+
+// ── POST — Create session via external API ──────────────
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
-    echo json_encode(['error' => 'Method Not Allowed']);
-    exit;
+    echo json_encode(['error' => 'Method not allowed']);
+    exit();
 }
 
-// Parse JSON body
-$body = json_decode(file_get_contents('php://input'), true);
-if (!$body) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Invalid JSON body']);
-    exit;
-}
+$data = json_decode(file_get_contents('php://input'), true);
 
-// Validate API key
-$apiKey = $body['api_key'] ?? '';
-if (!hash_equals(API_SECRET_KEY, $apiKey)) {
+if (($data['api_key'] ?? '') !== 'changeme123') {
     http_response_code(401);
     echo json_encode(['error' => 'Unauthorized']);
-    exit;
+    exit();
 }
 
-// Validate required fields
-$required = ['event_id', 'participant_name', 'best_lap_time'];
-foreach ($required as $field) {
-    if (empty($body[$field])) {
-        http_response_code(422);
-        echo json_encode(['error' => 'Validation failed', 'missing' => $field]);
-        exit;
-    }
+$eventId         = (int)   ($data['event_id']         ?? 0);
+$participantName = trim($data['participant_name'] ?? '');
+$f1Version       = trim($data['f1_version']       ?? '');
+$car             = trim($data['car']              ?? '');
+$track           = trim($data['track']            ?? '');
+$bestLapTime     = trim($data['best_lap_time']    ?? ''); // optional now
+
+if ($eventId === 0 || $participantName === '') {
+    http_response_code(400);
+    echo json_encode(['error' => 'event_id and participant_name are required']);
+    exit();
 }
 
-$eventId        = (int)$body['event_id'];
-$participantName = trim($body['participant_name']);
-$car            = trim($body['car']   ?? '');
-$track          = trim($body['track'] ?? '');
-$lapTime        = trim($body['best_lap_time']);
-
-// Validate lap time format
-if (!isValidLapTime($lapTime)) {
-    http_response_code(422);
-    echo json_encode(['error' => 'Invalid lap time format. Use mm:ss.mmm']);
-    exit;
-}
-
-// Verify event exists
-$pdo  = getDB();
-$stmt = $pdo->prepare('SELECT event_id FROM events WHERE event_id = ? LIMIT 1');
-$stmt->execute([$eventId]);
-if (!$stmt->fetch()) {
-    http_response_code(422);
-    echo json_encode(['error' => 'Event not found']);
-    exit;
-}
-
-// Insert session
-$stmt = $pdo->prepare(
-    'INSERT INTO sessions (event_id, participant_name, car, track, best_lap_time, source)
-     VALUES (?,?,?,?,?,\'api\')'
+$stmt = $conn->prepare(
+    'INSERT INTO sessions (event_id, participant_name, f1_version, car, track, best_lap_time) VALUES (?, ?, ?, ?, ?, ?)'
 );
-$stmt->execute([$eventId, $participantName, $car, $track, $lapTime]);
-$sessionId = (int)$pdo->lastInsertId();
+$stmt->bind_param('isssss', $eventId, $participantName, $f1Version, $car, $track, $bestLapTime);
+$stmt->execute();
+$newId = $stmt->insert_id;
+$stmt->close();
+$conn->close();
 
-http_response_code(200);
-echo json_encode(['status' => 'ok', 'session_id' => $sessionId]);
+echo json_encode(['success' => true, 'session_id' => $newId]);

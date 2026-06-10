@@ -1,29 +1,39 @@
 <?php
-// pages/session_delete.php  —  POST-only action
-require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
 requireLogin();
-checkSessionTimeout();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    redirect('pages/dashboard.php');
+    header('Location: dashboard.php');
+    exit();
 }
 
-verifyCsrf();
+$sessionId = (int) ($_POST['session_id'] ?? 0);
 
-$sessionId = (int)($_POST['session_id'] ?? 0);
-$eventId   = (int)($_POST['event_id']   ?? 0);
+if ($sessionId === 0) {
+    header('Location: dashboard.php');
+    exit();
+}
 
-if ($sessionId > 0) {
-    $pdo  = getDB();
-    $stmt = $pdo->prepare('DELETE FROM sessions WHERE session_id = ? AND event_id = ?');
-    $stmt->execute([$sessionId, $eventId]);
-    setFlash('success', 'Session deleted.');
+$conn = getConnection();
+$stmt = $conn->prepare('DELETE FROM sessions WHERE session_id = ?');
+$stmt->bind_param('i', $sessionId);
+$stmt->execute();
+$stmt->close();
+$conn->close();
+
+setFlash('success', 'Session deleted.');
+
+$redirect = trim($_POST['redirect'] ?? '');
+
+$allowed = ['dashboard.php', 'sessions.php', 'manage_events.php'];
+$base    = strtok($redirect, '?');
+
+if (in_array($base, $allowed) && $redirect === strip_tags($redirect)) {
+    header('Location: ' . $redirect);
 } else {
-    setFlash('error', 'Invalid session.');
+    header('Location: dashboard.php');
 }
-
-redirect('pages/event_detail.php?id=' . $eventId);
+exit();

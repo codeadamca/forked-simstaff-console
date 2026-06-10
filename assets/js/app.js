@@ -1,37 +1,15 @@
-// assets/js/app.js  —  F1 AutoStart Panel
+// Auto-dismiss alerts after 4 seconds
+document.addEventListener('DOMContentLoaded', function() {
+    var alerts = document.querySelectorAll('.alert');
 
-// Auto-dismiss flash alerts after 4 seconds
-document.addEventListener('DOMContentLoaded', () => {
-    const alerts = document.querySelectorAll('.alert');
-    alerts.forEach(alert => {
-        setTimeout(() => {
-            alert.style.transition = 'opacity .5s';
+    alerts.forEach(function(alert) {
+        setTimeout(function() {
             alert.style.opacity = '0';
-            setTimeout(() => alert.remove(), 500);
+            alert.style.transition = 'opacity 0.4s';
+
+            setTimeout(function() {
+                alert.remove();
+            }, 400);
         }, 4000);
     });
-
-    // Live lap time format hint
-    const lapField = document.getElementById('best_lap_time');
-    if (lapField) {
-        const hint = lapField.nextElementSibling;
-        lapField.addEventListener('input', () => {
-            const valid = /^\d{2}:\d{2}\.\d{3}$/.test(lapField.value);
-            if (lapField.value.length > 0) {
-                lapField.style.borderColor = valid ? 'var(--green)' : 'var(--red)';
-            } else {
-                lapField.style.borderColor = '';
-            }
-        });
-    }
 });
-
-
-
-function togglePassword() {
-    const input  = document.getElementById('password');
-    const label  = document.getElementById('eye-text');
-    const isHidden = input.type === 'password';
-    input.type   = isHidden ? 'text' : 'password';
-    label.textContent = isHidden ? 'Hide' : 'Show';
-}
