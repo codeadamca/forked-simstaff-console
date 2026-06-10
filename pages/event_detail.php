@@ -6,7 +6,7 @@ require_once __DIR__ . '/../includes/helpers.php';
 
 requireLogin();
 
-$conn = getConnection();
+$conn    = getConnection();
 $eventId = (int) ($_GET['id'] ?? 0);
 
 // Load event
@@ -21,46 +21,48 @@ if (!$event) {
     exit();
 }
 
-// Load sessions for this event
-$stmt = $conn->prepare('SELECT * FROM sessions WHERE event_id = ? ORDER BY best_lap_time ASC');
+// Load sessions — newest first (best_lap_time is a string, not sortable by value)
+$stmt = $conn->prepare('SELECT * FROM sessions WHERE event_id = ? ORDER BY created_at DESC');
 $stmt->bind_param('i', $eventId);
 $stmt->execute();
 $sessions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 $conn->close();
 
-$flash = getFlash();
+$flash     = getFlash();
 $pageTitle = htmlspecialchars($event['event_name']);
 include __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="page-header">
     <a href="dashboard.php" class="back-link">← Back to Events</a>
-    <h2><?php echo htmlspecialchars($event['event_name']); ?></h2>
-    <a href="session_form.php?event_id=<?php echo $eventId; ?>" class="btn btn--primary">
-        + Add Session</a>
-
+    <h2><?= htmlspecialchars($event['event_name']) ?></h2>
+    <div class="event-actions">
+        <a href="session_form.php?event_id=<?= $eventId ?>" class="btn btn--primary">+ Add Session</a>
+        <a href="simulation.php?event_id=<?= $eventId ?>" class="btn btn--success">▶ Start Simulation</a>
+    </div>
 </div>
 
 <p class="event-meta">
-    <?php echo date('F j, Y', strtotime($event['event_date'])); ?>
-    <?php if ($event['location'] != '') { ?>
-        &mdash; <?php echo htmlspecialchars($event['location']); ?>
-    <?php } ?>
+    <?= date('F j, Y', strtotime($event['event_date'])) ?>
+    <?php if ($event['location'] !== ''): ?>
+        &mdash; <?= htmlspecialchars($event['location']) ?>
+    <?php endif; ?>
 </p>
 
-<?php if ($flash) { ?>
-    <p class="alert alert--<?php echo $flash['type']; ?>"><?php echo $flash['message']; ?></p>
-<?php } ?>
+<?php if ($flash): ?>
+    <p class="alert alert--<?= $flash['type'] ?>"><?= $flash['message'] ?></p>
+<?php endif; ?>
 
-<?php if (count($sessions) == 0) { ?>
+<?php if (count($sessions) === 0): ?>
     <p class="empty-state">No sessions yet for this event.</p>
-<?php } else { ?>
+<?php else: ?>
     <table class="table">
         <thead>
             <tr>
                 <th>#</th>
-                <th>Participant</th>
+                <th>Game</th>
+                <th>Driver</th>
                 <th>Car</th>
                 <th>Track</th>
                 <th>Best Lap</th>
@@ -68,29 +70,30 @@ include __DIR__ . '/../includes/header.php';
             </tr>
         </thead>
         <tbody>
-            <?php $rank = 1;
-            foreach ($sessions as $session) { ?>
+            <?php $rank = 1; foreach ($sessions as $session): ?>
                 <tr>
-                    <td><?php echo $rank++; ?></td>
-                    <td><?php echo htmlspecialchars($session['participant_name']); ?></td>
-                    <td><?php echo htmlspecialchars($session['car']); ?></td>
-                    <td><?php echo htmlspecialchars($session['track']); ?></td>
-                    <td><strong><?php echo htmlspecialchars($session['best_lap_time']); ?></strong></td>
+                    <td><?= $rank++ ?></td>
+                    <td><?= htmlspecialchars($session['f1_version'] ?? '—') ?></td>
+                    <td><?= htmlspecialchars($session['participant_name']) ?></td>
+                    <td><?= htmlspecialchars($session['car']) ?></td>
+                    <td><?= htmlspecialchars($session['track']) ?></td>
+                    <td><strong><?= $session['best_lap_time'] !== '' ? htmlspecialchars($session['best_lap_time']) : '—' ?></strong></td>
                     <td class="actions">
-                        <a href="session_form.php?id=<?php echo $session['session_id']; ?>&event_id=<?php echo $eventId; ?>"
-                            class="btn btn--outline">Edit</a>
+                        <a href="session_form.php?id=<?= $session['session_id'] ?>&event_id=<?= $eventId ?>"
+                           class="btn btn--outline">Edit</a>
                         <form method="POST" action="session_delete.php" style="display:inline">
-                            <input type="hidden" name="session_id" value="<?php echo $session['session_id']; ?>">
-                            <input type="hidden" name="event_id" value="<?php echo $eventId; ?>">
-                            <button type="submit" class="btn btn--danger" onclick="return confirm('Delete this session?')">
+                            <input type="hidden" name="session_id" value="<?= $session['session_id'] ?>">
+                            <input type="hidden" name="event_id"   value="<?= $eventId ?>">
+                            <button type="submit" class="btn btn--danger"
+                                    onclick="return confirm('Delete session #<?= $session['session_id'] ?>?')">
                                 Delete
                             </button>
                         </form>
                     </td>
                 </tr>
-            <?php } ?>
+            <?php endforeach; ?>
         </tbody>
     </table>
-<?php } ?>
+<?php endif; ?>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

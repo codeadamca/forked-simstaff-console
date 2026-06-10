@@ -6,12 +6,17 @@ require_once __DIR__ . '/../includes/helpers.php';
 
 requireLogin();
 
-if ($_SERVER['REQUEST_METHOD'] != 'POST') {
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: dashboard.php');
     exit();
 }
 
-$eventId = (int)($_POST['event_id'] ?? 0);
+$eventId = (int) ($_POST['event_id'] ?? 0);
+
+if ($eventId === 0) {
+    header('Location: dashboard.php');
+    exit();
+}
 
 $conn = getConnection();
 $stmt = $conn->prepare('DELETE FROM events WHERE event_id = ?');

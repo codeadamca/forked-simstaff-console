@@ -3,7 +3,7 @@
 function getConnection() {
     $host = 'localhost';
     $user = 'root';
-    $pass = 'root';      
+    $pass = 'root';
     $name = 'timetracking';
     $port = 3306;
 

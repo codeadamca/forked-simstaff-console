@@ -1,18 +1,18 @@
 const LAP_DURATION_MS = 5000;
 
-let running      = false;
+let running = false;
 let sessionStart = null;
-let lapStart     = null;
-let animFrame    = null;
-let currentLap   = 0;
-let lapTimes     = [];
+let lapStart = null;
+let animFrame  = null;
+let currentLap = 0;
+let lapTimes = [];
 
-const carDot         = document.getElementById('car-dot');
+const carDot = document.getElementById('car-dot');
 const timerDisplay   = document.getElementById('timerDisplay');
-const lapDisplay     = document.getElementById('lapCounter');
-const lapList        = document.getElementById('lapList');
-const btnStart       = document.getElementById('startBtn');
-const btnEnd         = document.getElementById('endBtn');
+const lapDisplay  = document.getElementById('lapCounter');
+const lapList   = document.getElementById('lapList');
+const btnStart = document.getElementById('startBtn');
+const btnEnd  = document.getElementById('endBtn');
 const btnCompleteLap = document.getElementById('btn-complete-lap');
 
 function formatTime(ms) {
@@ -45,15 +45,15 @@ function renderLaps() {
 function recordLap() {
     if (!running) return;
 
-    const now       = performance.now();
-    const lapMs     = Math.round(now - lapStart);
+    const now  = performance.now();
+    const lapMs = Math.round(now - lapStart);
     const formatted = formatTime(lapMs);
 
     currentLap++;
     lapTimes.push({
         lap_number:  currentLap,
         lap_time_ms: lapMs,
-        lap_time:    formatted
+        lap_time: formatted
     });
 
     lapStart = performance.now();

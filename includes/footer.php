@@ -1,7 +1,12 @@
 </main>
+
 <footer class="footer">
-    <?php echo APP_NAME; ?> &copy; <?php echo date('Y'); ?>
+    <?= APP_NAME ?> &copy; <?= date('Y') ?>
 </footer>
-<script src="<?php echo BASE_URL; ?>/../assets/js/app.js"></script>
+
+<script src="<?= BASE_URL ?>/../assets/js/app.js"></script>
+<?php if (!empty($extraJs)): ?>
+    <?= $extraJs ?>
+<?php endif; ?>
 </body>
 </html>
