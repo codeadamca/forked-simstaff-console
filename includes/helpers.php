@@ -1,25 +1,40 @@
 <?php
-//a one-time message to show on the next page
-function setFlash($type, $message) {
+
+// ── Flash ─────────────────────────────────────────────────────────────────────
+
+function setFlash(string $type, string $message): void {
+    if (session_status() === PHP_SESSION_NONE) session_start();
     $_SESSION['flash_type']    = $type;
     $_SESSION['flash_message'] = $message;
 }
 
-// Get and clear the flash message
-function getFlash() {
-    if (empty($_SESSION['flash_message'])) {
-        return null;
-    }
+function getFlash(): ?array {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    if (empty($_SESSION['flash_message'])) return null;
 
     $flash = [
         'type'    => $_SESSION['flash_type'],
-        'message' => $_SESSION['flash_message']
+        'message' => $_SESSION['flash_message'],
     ];
 
     unset($_SESSION['flash_type'], $_SESSION['flash_message']);
-
     return $flash;
 }
+
+// ── Event Status ──────────────────────────────────────────────────────────────
+
+function resolveEventStatus(string $dbStatus, string $eventDate): array {
+    if ($dbStatus === 'canceled')  return ['canceled',  'Canceled',  'badge--canceled'];
+    if ($dbStatus === 'live')      return ['live',       'Live',      'badge--live'];
+    if ($dbStatus === 'completed') return ['completed',  'Completed', 'badge--completed'];
+
+    $today = date('Y-m-d');
+    if ($eventDate > $today)       return ['upcoming',  'Upcoming',  'badge--upcoming'];
+    if ($eventDate === $today)     return ['live',      'Live',      'badge--live'];
+    return                                ['completed', 'Completed', 'badge--completed'];
+}
+
+// ── DB Table Bootstrap ────────────────────────────────────────────────────────
 
 function ensureGameTables($conn) {
     $conn->query("CREATE TABLE IF NOT EXISTS games (
@@ -132,27 +147,25 @@ function ensureGameTables($conn) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 }
 
+// ── Game Option Helpers ───────────────────────────────────────────────────────
+
 function getGameOptions($conn) {
     $options = [];
-    $result = $conn->query('SELECT * FROM games ORDER BY name ASC');
+    $result  = $conn->query('SELECT * FROM games ORDER BY name ASC');
     if ($result) {
-        while ($row = $result->fetch_assoc()) {
-            $options[] = $row;
-        }
+        while ($row = $result->fetch_assoc()) $options[] = $row;
     }
     return $options;
 }
 
 function getGameItems($conn, $gameId, $tableName, $idName) {
     $items = [];
-    $stmt = $conn->prepare("SELECT {$idName}, name FROM {$tableName} WHERE game_id = ? ORDER BY name ASC");
+    $stmt  = $conn->prepare("SELECT {$idName}, name FROM {$tableName} WHERE game_id = ? ORDER BY name ASC");
     if ($stmt) {
         $stmt->bind_param('i', $gameId);
         $stmt->execute();
         $result = $stmt->get_result();
-        while ($row = $result->fetch_assoc()) {
-            $items[] = $row;
-        }
+        while ($row = $result->fetch_assoc()) $items[] = $row;
         $stmt->close();
     }
     return $items;
@@ -160,9 +173,7 @@ function getGameItems($conn, $gameId, $tableName, $idName) {
 
 function getEventGameDefaults($conn, $eventId) {
     $stmt = $conn->prepare('SELECT * FROM event_game_defaults WHERE event_id = ? LIMIT 1');
-    if (!$stmt) {
-        return null;
-    }
+    if (!$stmt) return null;
     $stmt->bind_param('i', $eventId);
     $stmt->execute();
     $result = $stmt->get_result()->fetch_assoc();
@@ -172,9 +183,7 @@ function getEventGameDefaults($conn, $eventId) {
 
 function getGameItemById($conn, $tableName, $idName, $id) {
     $stmt = $conn->prepare("SELECT * FROM {$tableName} WHERE {$idName} = ? LIMIT 1");
-    if (!$stmt) {
-        return null;
-    }
+    if (!$stmt) return null;
     $stmt->bind_param('i', $id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -186,48 +195,28 @@ function selectedOption($option, $current): string {
     return (string)$option === (string)$current ? ' selected' : '';
 }
 
-function getCarOptions() {
+// ── Static Option Lists ───────────────────────────────────────────────────────
+
+function getCarOptions(): array {
     return [
-        'Red Bull RB20',
-        'Ferrari SF-23',
-        'Mercedes W14',
-        'McLaren MCL60',
-        'Aston Martin AMR24',
-        'Alpine A524',
-        'Williams FW45',
-        'AlphaTauri AT04',
-        'Haas VF-24',
-        'Alfa Romeo C44'
+        'Red Bull RB20', 'Ferrari SF-23', 'Mercedes W14', 'McLaren MCL60',
+        'Aston Martin AMR24', 'Alpine A524', 'Williams FW45',
+        'AlphaTauri AT04', 'Haas VF-24', 'Alfa Romeo C44',
     ];
 }
 
-function getTrackOptions() {
+function getTrackOptions(): array {
     return [
-        'Silverstone',
-        'Monza',
-        'Spa-Francorchamps',
-        'Monaco',
-        'Suzuka',
-        'Interlagos',
-        'Circuit of the Americas',
-        'Singapore',
-        'Bahrain',
-        'Las Vegas'
+        'Silverstone', 'Monza', 'Spa-Francorchamps', 'Monaco', 'Suzuka',
+        'Interlagos', 'Circuit of the Americas', 'Singapore', 'Bahrain', 'Las Vegas',
     ];
 }
 
-function getDriverOptions() {
+function getDriverOptions(): array {
     return [
-        'Max Verstappen',
-        'Lewis Hamilton',
-        'Charles Leclerc',
-        'Lando Norris',
-        'George Russell',
-        'Carlos Sainz',
-        'Fernando Alonso',
-        'Sergio Pérez',
-        'Oscar Piastri',
-        'Pierre Gasly'
+        'Max Verstappen', 'Lewis Hamilton', 'Charles Leclerc', 'Lando Norris',
+        'George Russell', 'Carlos Sainz', 'Fernando Alonso',
+        'Sergio Pérez', 'Oscar Piastri', 'Pierre Gasly',
     ];
 }
 
@@ -235,7 +224,5 @@ function normalizeOptionList(array $options, string $current): array {
     if ($current !== '' && !in_array($current, $options, true)) {
         array_unshift($options, $current);
     }
-
     return $options;
 }
-

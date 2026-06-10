@@ -1,8 +1,12 @@
 <?php
 
 function requireLogin() {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+
     if (empty($_SESSION['admin_id'])) {
-        header('Location: ' . BASE_URL . '/../index.php');
+        header('Location: /index.php');
         exit();
     }
 }

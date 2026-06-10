@@ -5,230 +5,263 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
 requireLogin();
-$conn = getConnection();
-ensureGameTables($conn);
 
-$errors = [];
-$success = '';
-$selectedGameId = isset($_GET['selected_game_id']) ? (int)$_GET['selected_game_id'] : 0;
+$conn = getConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
-    if ($action === 'add_game') {
-        $name = trim($_POST['game_name'] ?? '');
-        if ($name === '') {
-            $errors[] = 'Game version name is required.';
-        } else {
-            $stmt = $conn->prepare('INSERT INTO games (name) VALUES (?)');
+    // Add new game version
+    if ($action === 'add_version') {
+        $name = trim($_POST['version_name'] ?? '');
+        if ($name) {
+            $stmt = $conn->prepare('INSERT IGNORE INTO game_versions (name) VALUES (?)');
             $stmt->bind_param('s', $name);
-            if ($stmt->execute()) {
-                $success = 'Game version added.';
-                $selectedGameId = $stmt->insert_id;
-            } else {
-                $errors[] = 'Failed to add game version. It may already exist.';
+            $stmt->execute();
+            $stmt->close();
+            setFlash('success', "Version \"$name\" added.");
+        }
+
+    // Delete a version (cascades to tracks/cars/racers)
+    } elseif ($action === 'delete_version') {
+        $id = (int) ($_POST['version_id'] ?? 0);
+        if ($id > 0) {
+            $stmt = $conn->prepare('DELETE FROM game_versions WHERE id = ?');
+            $stmt->bind_param('i', $id);
+            $stmt->execute();
+            $stmt->close();
+            setFlash('success', 'Version and all its data deleted.');
+        }
+
+    // Bulk add tracks / cars / racers
+    } elseif ($action === 'bulk_add') {
+        $versionId = (int) ($_POST['version_id'] ?? 0);
+        $type      = $_POST['item_type'] ?? '';
+        $raw       = trim($_POST['items'] ?? '');
+
+        $allowed = ['game_tracks', 'game_cars', 'game_racers'];
+        $table   = 'game_' . $type;
+
+        if ($versionId > 0 && in_array($table, $allowed) && $raw !== '') {
+            $items = preg_split('/[\n,]+/', $raw);
+            $stmt  = $conn->prepare("INSERT IGNORE INTO `$table` (version_id, name) VALUES (?, ?)");
+            $count = 0;
+            foreach ($items as $item) {
+                $item = trim($item);
+                if ($item !== '') {
+                    $stmt->bind_param('is', $versionId, $item);
+                    $stmt->execute();
+                    $count++;
+                }
             }
             $stmt->close();
+            setFlash('success', "$count item(s) added.");
+        }
+
+    // Delete single item from tracks/cars/racers
+    } elseif ($action === 'delete_item') {
+        $id    = (int) ($_POST['item_id']    ?? 0);
+        $table = $_POST['item_table'] ?? '';
+
+        $allowed = ['game_tracks', 'game_cars', 'game_racers'];
+        if ($id > 0 && in_array($table, $allowed)) {
+            $stmt = $conn->prepare("DELETE FROM `$table` WHERE id = ?");
+            $stmt->bind_param('i', $id);
+            $stmt->execute();
+            $stmt->close();
+            setFlash('success', 'Item deleted.');
         }
     }
 
-    if ($action === 'add_car') {
-        $gameId = (int)($_POST['game_id'] ?? 0);
-        $name = trim($_POST['car_name'] ?? '');
-        if ($gameId === 0 || $name === '') {
-            $errors[] = 'Select a game and enter a car name.';
-        } else {
-            $stmt = $conn->prepare('INSERT INTO game_cars (game_id, name) VALUES (?, ?)');
-            $stmt->bind_param('is', $gameId, $name);
-            if ($stmt->execute()) {
-                $success = 'Car added to game.';
-                $selectedGameId = $gameId;
-            } else {
-                $errors[] = 'Failed to add car.';
-            }
-            $stmt->close();
-        }
-    }
-
-    if ($action === 'add_track') {
-        $gameId = (int)($_POST['game_id'] ?? 0);
-        $name = trim($_POST['track_name'] ?? '');
-        if ($gameId === 0 || $name === '') {
-            $errors[] = 'Select a game and enter a track name.';
-        } else {
-            $stmt = $conn->prepare('INSERT INTO game_tracks (game_id, name) VALUES (?, ?)');
-            $stmt->bind_param('is', $gameId, $name);
-            if ($stmt->execute()) {
-                $success = 'Track added to game.';
-                $selectedGameId = $gameId;
-            } else {
-                $errors[] = 'Failed to add track.';
-            }
-            $stmt->close();
-        }
-    }
-
-    if ($action === 'add_driver') {
-        $gameId = (int)($_POST['game_id'] ?? 0);
-        $name = trim($_POST['driver_name'] ?? '');
-        if ($gameId === 0 || $name === '') {
-            $errors[] = 'Select a game and enter a driver name.';
-        } else {
-            $stmt = $conn->prepare('INSERT INTO game_drivers (game_id, name) VALUES (?, ?)');
-            $stmt->bind_param('is', $gameId, $name);
-            if ($stmt->execute()) {
-                $success = 'Driver added to game.';
-                $selectedGameId = $gameId;
-            } else {
-                $errors[] = 'Failed to add driver.';
-            }
-            $stmt->close();
-        }
-    }
-
-    if ($selectedGameId === 0 && isset($_POST['game_id'])) {
-        $selectedGameId = (int)$_POST['game_id'];
-    }
-
-    if ($selectedGameId !== 0) {
-        header('Location: manage_games.php?selected_game_id=' . $selectedGameId);
-        exit();
-    }
+    $conn->close();
+    header('Location: manage_games.php');  // ← fixed
+    exit();
 }
 
-$games = getGameOptions($conn);
-$gameOptions = [];
-foreach ($games as $game) {
-    $gameOptions[$game['game_id']] = $game['name'];
+// ── Load versions ─────────────────────────────────────────
+$versions = $conn->query('SELECT * FROM game_versions ORDER BY name ASC')
+                 ->fetch_all(MYSQLI_ASSOC);
+
+$activeVersionId = (int) ($_GET['version_id'] ?? ($versions[0]['id'] ?? 0));
+
+// ── Load items for active version ─────────────────────────
+$tracks = $cars = $racers = [];
+if ($activeVersionId > 0) {
+    $stmt = $conn->prepare('SELECT * FROM game_tracks  WHERE version_id = ? ORDER BY name ASC');
+    $stmt->bind_param('i', $activeVersionId);
+    $stmt->execute();
+    $tracks = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $stmt = $conn->prepare('SELECT * FROM game_cars    WHERE version_id = ? ORDER BY name ASC');
+    $stmt->bind_param('i', $activeVersionId);
+    $stmt->execute();
+    $cars = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $stmt = $conn->prepare('SELECT * FROM game_racers  WHERE version_id = ? ORDER BY name ASC');
+    $stmt->bind_param('i', $activeVersionId);
+    $stmt->execute();
+    $racers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
 }
 
-$selectedGameId = $selectedGameId ?: (count($games) ? (int)$games[0]['game_id'] : 0);
+$conn->close();
 
-$cars = $selectedGameId ? getGameItems($conn, $selectedGameId, 'game_cars', 'car_id') : [];
-$tracks = $selectedGameId ? getGameItems($conn, $selectedGameId, 'game_tracks', 'track_id') : [];
-$drivers = $selectedGameId ? getGameItems($conn, $selectedGameId, 'game_drivers', 'driver_id') : [];
-
+$flash     = getFlash();
 $pageTitle = 'Manage Game';
 include __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="page-header">
-    <a href="dashboard.php" class="back-link">← Back</a>
     <h2>Manage Game</h2>
+    <a href="dashboard.php" class="btn btn--outline">← Back to Dashboard</a>
 </div>
 
-<?php if ($success): ?>
-    <div class="alert alert--success"><?php echo htmlspecialchars($success); ?></div>
-<?php endif; ?>
-<?php if (count($errors)): ?>
-    <div class="alert alert--error">
-        <?php foreach ($errors as $error): ?>
-            <p><?php echo htmlspecialchars($error); ?></p>
-        <?php endforeach; ?>
-    </div>
+<?php if ($flash): ?>
+    <p class="alert alert--<?= $flash['type'] ?>"><?= $flash['message'] ?></p>
 <?php endif; ?>
 
-<div class="grid-row">
-    <div class="card">
-        <h3>Add Game Version</h3>
-        <form method="POST">
-            <input type="hidden" name="action" value="add_game">
-            <div class="form-group">
-                <label for="game_name">Game Version</label>
-                <input id="game_name" name="game_name" type="text" placeholder="e.g. F1 2024" required>
-            </div>
-            <button class="btn btn--primary" type="submit">Add Game</button>
-        </form>
-    </div>
-
-    <div class="card">
-        <h3>Add Options for Game</h3>
-        <form method="GET" style="margin-bottom: 1rem;">
-            <div class="form-group">
-                <label for="selected_game_id">Select Game</label>
-                <select id="selected_game_id" name="selected_game_id" onchange="this.form.submit()">
-                    <?php foreach ($games as $game): ?>
-                        <option value="<?php echo $game['game_id']; ?>"<?php echo ($game['game_id'] === $selectedGameId) ? ' selected' : ''; ?>><?php echo htmlspecialchars($game['name']); ?></option>
+<!-- Version Bar -->
+<div class="version-bar">
+    <div class="version-bar__left">
+        <label>Game Version</label>
+        <div class="version-bar__select-wrap">
+            <select id="versionSelect" onchange="switchVersion(this.value)">
+                <?php if (empty($versions)): ?>
+                    <option disabled>No versions yet</option>
+                <?php else: ?>
+                    <?php foreach ($versions as $v): ?>
+                        <option value="<?= $v['id'] ?>"
+                            <?= $v['id'] == $activeVersionId ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($v['name']) ?>
+                        </option>
                     <?php endforeach; ?>
-                </select>
-            </div>
-        </form>
+                <?php endif; ?>
+            </select>
 
-        <form method="POST">
-            <input type="hidden" name="action" value="add_car">
-            <input type="hidden" name="game_id" value="<?php echo htmlspecialchars($selectedGameId); ?>">
-            <div class="form-group">
-                <label for="car_name">Car</label>
-                <input id="car_name" name="car_name" type="text" placeholder="e.g. Red Bull RB20" required>
-            </div>
-            <button class="btn btn--primary" type="submit">Add Car</button>
-        </form>
-
-        <form method="POST" style="margin-top: 1rem;">
-            <input type="hidden" name="action" value="add_track">
-            <input type="hidden" name="game_id" value="<?php echo htmlspecialchars($selectedGameId); ?>">
-            <div class="form-group">
-                <label for="track_name">Track</label>
-                <input id="track_name" name="track_name" type="text" placeholder="e.g. Silverstone" required>
-            </div>
-            <button class="btn btn--primary" type="submit">Add Track</button>
-        </form>
-
-        <form method="POST" style="margin-top: 1rem;">
-            <input type="hidden" name="action" value="add_driver">
-            <input type="hidden" name="game_id" value="<?php echo htmlspecialchars($selectedGameId); ?>">
-            <div class="form-group">
-                <label for="driver_name">Driver</label>
-                <input id="driver_name" name="driver_name" type="text" placeholder="e.g. Max Verstappen" required>
-            </div>
-            <button class="btn btn--primary" type="submit">Add Driver</button>
-        </form>
+            <?php if ($activeVersionId > 0): ?>
+                <form method="POST" style="display:inline"
+                      onsubmit="return confirm('Delete this version and ALL its tracks, cars and racers?')">
+                    <input type="hidden" name="action"     value="delete_version">
+                    <input type="hidden" name="version_id" value="<?= $activeVersionId ?>">
+                    <button type="submit" class="btn btn--danger btn--sm">🗑 Delete Version</button>
+                </form>
+            <?php endif; ?>
+        </div>
     </div>
+
+    <form method="POST" class="version-bar__add">
+        <input type="hidden" name="action" value="add_version">
+        <input type="text"   name="version_name" placeholder="New version name..." required>
+        <button type="submit" class="btn btn--primary btn--sm">+ Add Version</button>
+    </form>
 </div>
 
-<div class="page-header" style="margin-top: 2rem;">
-    <h3>Options for <?php echo htmlspecialchars($gameOptions[$selectedGameId] ?? 'Select a game'); ?></h3>
+<?php if ($activeVersionId > 0): ?>
+
+<div class="manage-grid">
+
+    <!-- TRACKS -->
+    <div class="manage-card">
+        <div class="manage-card__header">🏁 Tracks</div>
+        <form method="POST" class="manage-card__bulk-form">
+            <input type="hidden" name="action"     value="bulk_add">
+            <input type="hidden" name="version_id" value="<?= $activeVersionId ?>">
+            <input type="hidden" name="item_type"  value="tracks">
+            <textarea name="items" rows="3"
+                placeholder="One per line or comma separated&#10;e.g. Monza&#10;Silverstone&#10;Spa"></textarea>
+            <button type="submit" class="btn btn--primary btn--sm">+ Add</button>
+        </form>
+        <ul class="manage-card__list">
+            <?php if (empty($tracks)): ?>
+                <li class="manage-card__empty">No tracks yet.</li>
+            <?php else: ?>
+                <?php foreach ($tracks as $item): ?>
+                    <li>
+                        <span><?= htmlspecialchars($item['name']) ?></span>
+                        <form method="POST">
+                            <input type="hidden" name="action"     value="delete_item">
+                            <input type="hidden" name="item_id"    value="<?= $item['id'] ?>">
+                            <input type="hidden" name="item_table" value="game_tracks">
+                            <button type="submit" class="btn--icon" title="Delete">✕</button>
+                        </form>
+                    </li>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </ul>
+    </div>
+
+    <!-- CARS -->
+    <div class="manage-card">
+        <div class="manage-card__header">🚗 Cars</div>
+        <form method="POST" class="manage-card__bulk-form">
+            <input type="hidden" name="action"     value="bulk_add">
+            <input type="hidden" name="version_id" value="<?= $activeVersionId ?>">
+            <input type="hidden" name="item_type"  value="cars">
+            <textarea name="items" rows="3"
+                placeholder="One per line or comma separated&#10;e.g. Ferrari SF-24&#10;Red Bull RB20"></textarea>
+            <button type="submit" class="btn btn--primary btn--sm">+ Add</button>
+        </form>
+        <ul class="manage-card__list">
+            <?php if (empty($cars)): ?>
+                <li class="manage-card__empty">No cars yet.</li>
+            <?php else: ?>
+                <?php foreach ($cars as $item): ?>
+                    <li>
+                        <span><?= htmlspecialchars($item['name']) ?></span>
+                        <form method="POST">
+                            <input type="hidden" name="action"     value="delete_item">
+                            <input type="hidden" name="item_id"    value="<?= $item['id'] ?>">
+                            <input type="hidden" name="item_table" value="game_cars">
+                            <button type="submit" class="btn--icon" title="Delete">✕</button>
+                        </form>
+                    </li>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </ul>
+    </div>
+
+    <!-- RACERS -->
+    <div class="manage-card">
+        <div class="manage-card__header">🧑‍✈️ Racers</div>
+        <form method="POST" class="manage-card__bulk-form">
+            <input type="hidden" name="action"     value="bulk_add">
+            <input type="hidden" name="version_id" value="<?= $activeVersionId ?>">
+            <input type="hidden" name="item_type"  value="racers">
+            <textarea name="items" rows="3"
+                placeholder="One per line or comma separated&#10;e.g. Leclerc&#10;Verstappen&#10;Hamilton"></textarea>
+            <button type="submit" class="btn btn--primary btn--sm">+ Add</button>
+        </form>
+        <ul class="manage-card__list">
+            <?php if (empty($racers)): ?>
+                <li class="manage-card__empty">No racers yet.</li>
+            <?php else: ?>
+                <?php foreach ($racers as $item): ?>
+                    <li>
+                        <span><?= htmlspecialchars($item['name']) ?></span>
+                        <form method="POST">
+                            <input type="hidden" name="action"     value="delete_item">
+                            <input type="hidden" name="item_id"    value="<?= $item['id'] ?>">
+                            <input type="hidden" name="item_table" value="game_racers">
+                            <button type="submit" class="btn--icon" title="Delete">✕</button>
+                        </form>
+                    </li>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </ul>
+    </div>
+
 </div>
 
-<div class="grid-row">
-    <div class="card">
-        <h4>Cars</h4>
-        <?php if (count($cars)): ?>
-            <ul>
-                <?php foreach ($cars as $car): ?>
-                    <li><?php echo htmlspecialchars($car['name']); ?></li>
-                <?php endforeach; ?>
-            </ul>
-        <?php else: ?>
-            <p>No cars added yet.</p>
-        <?php endif; ?>
-    </div>
+<?php else: ?>
+    <p class="empty-state">No versions yet. Add one above to get started.</p>
+<?php endif; ?>
 
-    <div class="card">
-        <h4>Tracks</h4>
-        <?php if (count($tracks)): ?>
-            <ul>
-                <?php foreach ($tracks as $track): ?>
-                    <li><?php echo htmlspecialchars($track['name']); ?></li>
-                <?php endforeach; ?>
-            </ul>
-        <?php else: ?>
-            <p>No tracks added yet.</p>
-        <?php endif; ?>
-    </div>
-
-    <div class="card">
-        <h4>Drivers</h4>
-        <?php if (count($drivers)): ?>
-            <ul>
-                <?php foreach ($drivers as $driver): ?>
-                    <li><?php echo htmlspecialchars($driver['name']); ?></li>
-                <?php endforeach; ?>
-            </ul>
-        <?php else: ?>
-            <p>No drivers added yet.</p>
-        <?php endif; ?>
-    </div>
-</div>
+<script>
+function switchVersion(id) {
+    window.location.href = 'manage_games.php?version_id=' + id;  // ← fixed
+}
+</script>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

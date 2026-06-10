@@ -5,70 +5,63 @@ require_once __DIR__ . '/../includes/auth.php';
 
 requireLogin();
 
-$eventId = isset($_GET['event_id']) ? (int) $_GET['event_id'] : 0;
-$sessionId = isset($_GET['session_id']) ? (int) $_GET['session_id'] : 0;
+$conn      = getConnection();
+$sessionId = (int) ($_GET['session_id'] ?? 0);
+$eventId   = (int) ($_GET['event_id']   ?? 0);
 
-if ($eventId === 0) {
-    header('Location: dashboard.php');
-    exit();
-}
-
-$conn = getConnection();
-$eventStmt = $conn->prepare('SELECT event_id FROM events WHERE event_id = ? LIMIT 1');
-$eventStmt->bind_param('i', $eventId);
-$eventStmt->execute();
-$eventExists = $eventStmt->get_result()->fetch_assoc();
-$eventStmt->close();
-
-if (!$eventExists) {
-    $conn->close();
-    header('Location: dashboard.php');
-    exit();
-}
-
-if ($sessionId === 0) {
-    $defaultDriver = $_SESSION['username'] ?? 'Simulator';
-    $defaultBestLap = '';
-
-    // load defaults from event_settings
-    $s = $conn->prepare('SELECT f1_version, default_car, default_track, default_driver FROM event_settings WHERE event_id = ? LIMIT 1');
-    $s->bind_param('i', $eventId);
-    $s->execute();
-    $defaults = $s->get_result()->fetch_assoc();
-    $s->close();
-
-    $defaultGame = $defaults['f1_version'] ?? 'F1 2026';
-    $defaultCar = $defaults['default_car'] ?? 'Red Bull RB20';
-    $defaultTrack = $defaults['default_track'] ?? 'Silverstone';
-    if (!empty($defaults['default_driver'])) $defaultDriver = $defaults['default_driver'];
-
-    $insertStmt = $conn->prepare(
-        'INSERT INTO sessions (event_id, participant_name, best_lap_time, f1_version, car, track) VALUES (?, ?, ?, ?, ?, ?)'
-    );
-    $insertStmt->bind_param('isssss', $eventId, $defaultDriver, $defaultBestLap, $defaultGame, $defaultCar, $defaultTrack);
-    $insertStmt->execute();
-    $sessionId = $conn->insert_id;
-    $insertStmt->close();
-
-    $conn->close();
-    header('Location: simulation.php?event_id=' . $eventId . '&session_id=' . $sessionId);
-    exit();
-}
+// Load events for dropdown
+$events = $conn->query('
+    SELECT event_id, event_name, car, track, racer
+    FROM events
+    ORDER BY event_date DESC
+')->fetch_all(MYSQLI_ASSOC);
 
 $conn->close();
 
-$pageTitle = 'Simulation';
+$pageTitle = 'Simulatior';
 include __DIR__ . '/../includes/header.php';
 ?>
-
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/css/simulation.css">
-
 
 <div class="sim-wrapper">
 
     <h1 class="sim-title">F1 LAP SIMULATOR</h1>
-    <p class="sim-subtitle">Session #<?= $sessionId ?> &nbsp;|&nbsp; Event #<?= $eventId ?></p>
+    <p class="sim-subtitle" id="simSubtitle">
+        Session #<?= $sessionId ?> &nbsp;|&nbsp; Event #<?= $eventId ?>
+    </p>
+
+    <!-- ── EVENT SELECTOR ── -->
+    <?php if ($sessionId === 0): ?>
+    <div id="event-selector" style="margin-bottom: 40px;">
+
+        <div class="form-group">
+            <label for="sel-event">Select Event</label>
+            <select id="sel-event" class="form-control">
+                <option value="">— Select Event —</option>
+                <?php foreach ($events as $ev): ?>
+                    <option value="<?= $ev['event_id'] ?>"
+                            data-car="<?= htmlspecialchars($ev['car']   ?? '') ?>"
+                            data-track="<?= htmlspecialchars($ev['track'] ?? '') ?>"
+                            data-racer="<?= htmlspecialchars($ev['racer'] ?? '') ?>"
+                            data-name="<?= htmlspecialchars($ev['event_name']) ?>">
+                        <?= htmlspecialchars($ev['event_name']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+
+        <!-- Event preview -->
+        <div id="event-preview" style="display:none; margin: 12px 0 16px;">
+            <table class="table" style="max-width:400px;">
+                <tr><td style="color:#8888aa;">🚗 Car</td>   <td id="prev-car">—</td></tr>
+                <tr><td style="color:#8888aa;">🏁 Track</td> <td id="prev-track">—</td></tr>
+                <tr><td style="color:#8888aa;">👤 Racer</td> <td id="prev-racer">—</td></tr>
+            </table>
+        </div>
+
+        <p id="selector-status" style="font-size:0.8rem; min-height:1.2em; color:#8888aa;"></p>
+    </div>
+    <?php endif; ?>
 
     <!-- Track -->
     <div class="track-line-wrapper">
@@ -86,7 +79,7 @@ include __DIR__ . '/../includes/header.php';
 
     <!-- Buttons -->
     <div class="sim-controls">
-        <button class="btn-sim btn-start" id="startBtn">START</button>
+        <button class="btn-sim btn-start" id="startBtn" <?= $sessionId === 0 ? 'disabled' : '' ?>>START</button>
         <button id="btn-complete-lap" disabled>COMPLETE LAP</button>
         <button class="btn-sim btn-end" id="endBtn" disabled>END SESSION</button>
     </div>
@@ -98,6 +91,69 @@ include __DIR__ . '/../includes/header.php';
     </div>
 
 </div>
+
+<script>
+// Event selector — creates session then unlocks START
+(function () {
+    const sel    = document.getElementById('sel-event');
+    const btn    = document.getElementById('startBtn');
+    const status = document.getElementById('selector-status');
+    const preview      = document.getElementById('event-preview');
+    const prevCar      = document.getElementById('prev-car');
+    const prevTrack    = document.getElementById('prev-track');
+    const prevRacer    = document.getElementById('prev-racer');
+    const simSubtitle  = document.getElementById('simSubtitle');
+    const eventSelector = document.getElementById('event-selector');
+
+    if (!sel) return; // already have a session_id, skip
+
+    sel.addEventListener('change', async function () {
+        const opt = this.options[this.selectedIndex];
+
+        if (!this.value) {
+            preview.style.display = 'none';
+            btn.disabled          = true;
+            status.textContent    = '';
+            return;
+        }
+
+        prevCar.textContent   = opt.dataset.car   || '—';
+        prevTrack.textContent = opt.dataset.track || '—';
+        prevRacer.textContent = opt.dataset.racer || '—';
+        preview.style.display = 'block';
+
+        btn.disabled       = true;
+        status.textContent = 'Creating session…';
+
+        try {
+            const res  = await fetch('../api/create_session.php', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ event_id: parseInt(this.value) }),
+            });
+            const data = await res.json();
+
+            if (data.session_id) {
+                
+                history.replaceState(null, '', '?session_id=' + data.session_id);
+
+                status.textContent = '✅ Session #' + data.session_id + ' ready — press START';
+                if (simSubtitle) {
+                    simSubtitle.innerHTML =
+                        'Session #' + data.session_id +
+                        ' &nbsp;|&nbsp; ' + (opt.dataset.name || opt.textContent.trim());
+                }
+
+                btn.disabled = false;
+            } else {
+                status.textContent = '❌ ' + (data.error ?? 'Could not create session.');
+            }
+        } catch (e) {
+            status.textContent = '❌ Network error.';
+        }
+    });
+})();
+</script>
 
 <script src="../assets/js/simulation.js"></script>
 

@@ -7,110 +7,131 @@ require_once __DIR__ . '/../includes/helpers.php';
 requireLogin();
 
 $conn    = getConnection();
-ensureGameTables($conn);
-$eventId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$eventId = (int) ($_GET['id'] ?? 0);
 $isEdit  = $eventId > 0;
 $errors  = [];
-$values  = ['event_name' => '', 'event_date' => '', 'location' => '', 'notes' => ''];
-$selectedGameId = isset($_GET['game_id']) ? (int)$_GET['game_id'] : 0;
+$values  = [
+    'event_name' => '',
+    'event_date' => date('Y-m-d'),
+    'location'   => '',
+    'notes'      => '',
+    'version_id' => 0,
+    'car'        => '',
+    'track'      => '',
+    'racer'      => '',
+    'status'     => 'auto',
+];
 
-$games = getGameOptions($conn);
-$gameOptions = [];
-foreach ($games as $game) {
-    $gameOptions[$game['game_id']] = $game['name'];
-}
+// ── Load all game versions ─────────────────────────────────
+$versions = $conn->query('SELECT id, name FROM game_versions ORDER BY name ASC')
+                 ->fetch_all(MYSQLI_ASSOC);
 
-// Load existing event if editing
+// ── Load existing event if editing ────────────────────────
 if ($isEdit) {
     $stmt = $conn->prepare('SELECT * FROM events WHERE event_id = ? LIMIT 1');
     $stmt->bind_param('i', $eventId);
     $stmt->execute();
     $event = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
 
     if (!$event) {
+        $conn->close();
         header('Location: dashboard.php');
         exit();
     }
 
-    $values = $event;
+    $values = array_merge($values, $event);
+}
+
+// ── Pre-load cars/tracks/racers if version already known ──
+$cars = $tracks = $racers = [];
+$selectedVersion = (int) ($values['version_id'] ?? 0);
+
+if ($selectedVersion > 0) {
+    $stmt = $conn->prepare('SELECT name FROM game_cars WHERE version_id = ? ORDER BY name ASC');
+    $stmt->bind_param('i', $selectedVersion);
+    $stmt->execute();
+    $cars = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
-    $settings = getEventGameDefaults($conn, $eventId);
-    if ($settings) {
-        $selectedGameId = $settings['game_id'];
-        $values['default_car_id'] = $settings['car_id'];
-        $values['default_track_id'] = $settings['track_id'];
-        $values['default_driver_id'] = $settings['driver_id'];
-    } else {
-        $values['default_car_id'] = 0;
-        $values['default_track_id'] = 0;
-        $values['default_driver_id'] = 0;
-    }
+    $stmt = $conn->prepare('SELECT name FROM game_tracks WHERE version_id = ? ORDER BY name ASC');
+    $stmt->bind_param('i', $selectedVersion);
+    $stmt->execute();
+    $tracks = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $stmt = $conn->prepare('SELECT name FROM game_racers WHERE version_id = ? ORDER BY name ASC');
+    $stmt->bind_param('i', $selectedVersion);
+    $stmt->execute();
+    $racers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
 }
 
-// default to first game if not selected yet
-if ($selectedGameId === 0 && count($games)) {
-    $selectedGameId = (int)$games[0]['game_id'];
-}
-
-$cars = $selectedGameId ? getGameItems($conn, $selectedGameId, 'game_cars', 'car_id') : [];
-$tracks = $selectedGameId ? getGameItems($conn, $selectedGameId, 'game_tracks', 'track_id') : [];
-$drivers = $selectedGameId ? getGameItems($conn, $selectedGameId, 'game_drivers', 'driver_id') : [];
-
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+// ── Handle POST ───────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $values['event_name'] = trim($_POST['event_name'] ?? '');
     $values['event_date'] = trim($_POST['event_date'] ?? '');
-    $values['location'] = trim($_POST['location']   ?? '');
-    $values['notes']  = trim($_POST['notes']      ?? '');
-    $selectedGameId = (int)($_POST['game_id'] ?? $selectedGameId);
-    $values['default_car_id'] = (int)($_POST['default_car_id'] ?? 0);
-    $values['default_track_id'] = (int)($_POST['default_track_id'] ?? 0);
-    $values['default_driver_id'] = (int)($_POST['default_driver_id'] ?? 0);
+    $values['location']   = trim($_POST['location']   ?? '');
+    $values['notes']      = trim($_POST['notes']      ?? '');
+    $values['version_id'] = (int) ($_POST['version_id'] ?? 0);
+    $values['car']        = trim($_POST['car']         ?? '');
+    $values['track']      = trim($_POST['track']       ?? '');
+    $values['racer']      = trim($_POST['racer']       ?? '');
+    $values['status']     = trim($_POST['status']      ?? 'auto');
 
-    if ($values['event_name'] == '') $errors[] = 'Event name is required.';
-    if ($values['event_date'] == '') $errors[] = 'Date is required.';
-    if ($selectedGameId === 0) $errors[] = 'Please select a game version.';
-    if ($values['default_car_id'] === 0) $errors[] = 'Please select a default car for this game.';
-    if ($values['default_track_id'] === 0) $errors[] = 'Please select a default track for this game.';
-    if ($values['default_driver_id'] === 0) $errors[] = 'Please select a default driver for this game.';
+    if ($values['event_name'] === '') $errors[] = 'Event name is required.';
+    if ($values['event_date'] === '') $errors[] = 'Date is required.';
+    if ($values['version_id'] === 0)  $errors[] = 'Please select a game version.';
+    if ($values['car']        === '') $errors[] = 'Please select a car.';
+    if ($values['track']      === '') $errors[] = 'Please select a track.';
+    if ($values['racer']      === '') $errors[] = 'Please select a racer.';
 
-    if (count($errors) == 0) {
+    $allowed = ['auto', 'live', 'canceled', 'completed'];
+    if (!in_array($values['status'], $allowed)) $errors[] = 'Invalid status selected.';
+
+    if (empty($errors)) {
         if ($isEdit) {
-            $stmt = $conn->prepare(
-                'UPDATE events SET event_name=?, event_date=?, location=?, notes=? WHERE event_id=?'
-            );
+            $stmt = $conn->prepare('
+                UPDATE events
+                SET event_name = ?, event_date = ?, location = ?,
+                    notes = ?, version_id = ?, car = ?, track = ?, racer = ?,
+                    status = ?
+                WHERE event_id = ?
+            ');
             $stmt->bind_param(
-                'ssssi',
+                'ssssissssi',
                 $values['event_name'],
                 $values['event_date'],
                 $values['location'],
                 $values['notes'],
+                $values['version_id'],
+                $values['car'],
+                $values['track'],
+                $values['racer'],
+                $values['status'],
                 $eventId
             );
         } else {
-            $stmt = $conn->prepare(
-                'INSERT INTO events (event_name, event_date, location, notes) VALUES (?, ?, ?, ?)'
-            );
+            $stmt = $conn->prepare('
+                INSERT INTO events (event_name, event_date, location, notes, version_id, car, track, racer, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ');
             $stmt->bind_param(
-                'ssss',
+                'ssssissss',
                 $values['event_name'],
                 $values['event_date'],
                 $values['location'],
-                $values['notes']
+                $values['notes'],
+                $values['version_id'],
+                $values['car'],
+                $values['track'],
+                $values['racer'],
+                $values['status']
             );
         }
 
         $stmt->execute();
-        $savedEventId = $isEdit ? $eventId : $stmt->insert_id;
         $stmt->close();
-
-        $up = $conn->prepare(
-            'INSERT INTO event_game_defaults (event_id, game_id, car_id, track_id, driver_id) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE game_id=VALUES(game_id), car_id=VALUES(car_id), track_id=VALUES(track_id), driver_id=VALUES(driver_id)'
-        );
-        $up->bind_param('iiiii', $savedEventId, $selectedGameId, $values['default_car_id'], $values['default_track_id'], $values['default_driver_id']);
-        $up->execute();
-        $up->close();
-
         $conn->close();
 
         setFlash('success', $isEdit ? 'Event updated.' : 'Event created.');
@@ -125,81 +146,212 @@ $pageTitle = $isEdit ? 'Edit Event' : 'New Event';
 include __DIR__ . '/../includes/header.php';
 ?>
 
-<div class="page-header">
-    <a href="dashboard.php" class="back-link">← Back</a>
-    <h2><?php echo $pageTitle; ?></h2>
+<div class="form-page-header">
+    <a href="dashboard.php" class="back-link">← Back to Dashboard</a>
+    <h2><?= $pageTitle ?></h2>
 </div>
 
-<?php if (count($errors) > 0) { ?>
-    <div class="alert alert--error">
-        <?php foreach ($errors as $err) { ?>
-            <p><?php echo $err; ?></p>
-        <?php } ?>
+<?php if (!empty($errors)): ?>
+    <div class="alert alert--danger" style="max-width:720px;margin:0 auto 20px;">
+        <?php foreach ($errors as $err): ?>
+            <p><?= htmlspecialchars($err) ?></p>
+        <?php endforeach; ?>
     </div>
-<?php } ?>
+<?php endif; ?>
 
-<form method="POST" class="form">
-    <div class="form-group">
-        <label>Event Name</label>
-        <input type="text" name="event_name"
-               value="<?php echo htmlspecialchars($values['event_name']); ?>" required>
-    </div>
-    <div class="form-group">
-        <label>Date</label>
-        <input type="date" name="event_date"
-               value="<?php echo htmlspecialchars($values['event_date']); ?>" required>
-    </div>
-    <div class="form-group">
-        <label>Location</label>
-        <input type="text" name="location"
-               value="<?php echo htmlspecialchars($values['location']); ?>">
-    </div>
-    <div class="form-group">
-        <label>Game Version</label>
-        <select name="game_id" id="game_id" required onchange="window.location.href='event_form.php?id=<?php echo $eventId; ?>&game_id=' + this.value;">
-            <option value="">Select game</option>
-            <?php foreach ($games as $game): ?>
-                <option value="<?php echo $game['game_id']; ?>"<?php echo selectedOption($game['game_id'], $selectedGameId); ?>><?php echo htmlspecialchars($game['name']); ?></option>
-            <?php endforeach; ?>
-        </select>
+<form method="POST" class="form-card">
+
+    <div class="form-row">
+        <div class="form-group">
+            <label for="event_name">Event Name <span class="required">*</span></label>
+            <input type="text" id="event_name" name="event_name"
+                   value="<?= htmlspecialchars($values['event_name']) ?>"
+                   required autofocus placeholder="e.g. Monaco GP Night">
+        </div>
+        <div class="form-group">
+            <label for="event_date">Date <span class="required">*</span></label>
+            <input type="date" id="event_date" name="event_date"
+                   value="<?= htmlspecialchars($values['event_date']) ?>" required>
+        </div>
     </div>
 
     <div class="form-group">
-        <label>Default Car</label>
-        <select name="default_car_id" required>
-            <option value="">Select car</option>
-            <?php foreach ($cars as $car): ?>
-                <option value="<?php echo $car['car_id']; ?>"<?php echo selectedOption($car['car_id'], $values['default_car_id'] ?? 0); ?>><?php echo htmlspecialchars($car['name']); ?></option>
-            <?php endforeach; ?>
-        </select>
+        <label for="location">Location</label>
+        <input type="text" id="location" name="location"
+               value="<?= htmlspecialchars($values['location']) ?>"
+               placeholder="e.g. Montreal, QC">
     </div>
 
-    <div class="form-group">
-        <label>Default Track</label>
-        <select name="default_track_id" required>
-            <option value="">Select track</option>
-            <?php foreach ($tracks as $track): ?>
-                <option value="<?php echo $track['track_id']; ?>"<?php echo selectedOption($track['track_id'], $values['default_track_id'] ?? 0); ?>><?php echo htmlspecialchars($track['name']); ?></option>
-            <?php endforeach; ?>
-        </select>
+    <!-- Game Setup -->
+    <div class="form-section">
+        <div class="form-section__label">Game Setup</div>
+
+        <div class="form-group">
+            <label for="sel-version">Game Version <span class="required">*</span></label>
+            <select id="sel-version" name="version_id" required>
+                <option value="">— Select Version —</option>
+                <?php foreach ($versions as $v): ?>
+                    <option value="<?= $v['id'] ?>"
+                            data-id="<?= $v['id'] ?>"
+                        <?= (int)$values['version_id'] === $v['id'] ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($v['name']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="sel-track">Track <span class="required">*</span></label>
+                <select id="sel-track" name="track" required
+                        <?= $selectedVersion === 0 ? 'disabled' : '' ?>>
+                    <option value="">— Select Version First —</option>
+                    <?php foreach ($tracks as $t): ?>
+                        <option value="<?= htmlspecialchars($t['name']) ?>"
+                            <?= $values['track'] === $t['name'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($t['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="sel-car">Car <span class="required">*</span></label>
+                <select id="sel-car" name="car" required
+                        <?= $selectedVersion === 0 ? 'disabled' : '' ?>>
+                    <option value="">— Select Version First —</option>
+                    <?php foreach ($cars as $c): ?>
+                        <option value="<?= htmlspecialchars($c['name']) ?>"
+                            <?= $values['car'] === $c['name'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($c['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="sel-racer">Racer <span class="required">*</span></label>
+            <select id="sel-racer" name="racer" required
+                    <?= $selectedVersion === 0 ? 'disabled' : '' ?>>
+                <option value="">— Select Version First —</option>
+                <?php foreach ($racers as $r): ?>
+                    <option value="<?= htmlspecialchars($r['name']) ?>"
+                        <?= $values['racer'] === $r['name'] ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($r['name']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
     </div>
 
-    <div class="form-group">
-        <label>Default Driver</label>
-        <select name="default_driver_id" required>
-            <option value="">Select driver</option>
-            <?php foreach ($drivers as $driver): ?>
-                <option value="<?php echo $driver['driver_id']; ?>"<?php echo selectedOption($driver['driver_id'], $values['default_driver_id'] ?? 0); ?>><?php echo htmlspecialchars($driver['name']); ?></option>
-            <?php endforeach; ?>
-        </select>
+    <!-- Status (edit only) -->
+    <?php if ($isEdit): ?>
+    <div class="form-section">
+        <div class="form-section__label">Event Status</div>
+
+        <div class="form-group">
+            <label for="sel-status">Status <span class="required">*</span></label>
+            <select id="sel-status" name="status" required>
+                <option value="auto"      <?= $values['status'] === 'auto'      ? 'selected' : '' ?>>Upcoming</option>
+                <option value="live"      <?= $values['status'] === 'live'      ? 'selected' : '' ?>>Live</option>
+                <option value="completed" <?= $values['status'] === 'completed' ? 'selected' : '' ?>>Completed</option>
+                <option value="canceled"  <?= $values['status'] === 'canceled'  ? 'selected' : '' ?>>Canceled</option>
+            </select>
+        </div>
     </div>
+    <?php endif; ?>
+
+    <!-- Notes -->
     <div class="form-group">
-        <label>Notes</label>
-        <textarea name="notes" rows="4"><?php echo htmlspecialchars($values['notes']); ?></textarea>
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" rows="3"
+                  placeholder="Any extra details..."><?= htmlspecialchars($values['notes']) ?></textarea>
     </div>
-    <button type="submit" class="btn btn--primary">
-        <?php echo $isEdit ? 'Save Changes' : 'Create Event'; ?>
-    </button>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn--primary">
+            <?= $isEdit ? 'Save Changes' : 'Create Event' ?>
+        </button>
+        <a href="dashboard.php" class="btn btn--outline">Cancel</a>
+    </div>
+
 </form>
+
+<script>
+    const APP_BASE = "<?= rtrim(str_replace($_SERVER['DOCUMENT_ROOT'], '', __DIR__ . '/..'), '/') ?>";
+</script>
+
+<script>
+(function () {
+    const selVersion = document.getElementById('sel-version');
+    const selTrack   = document.getElementById('sel-track');
+    const selCar     = document.getElementById('sel-car');
+    const selRacer   = document.getElementById('sel-racer');
+
+    const savedTrack = <?= json_encode($values['track'] ?? '') ?>;
+    const savedCar   = <?= json_encode($values['car']   ?? '') ?>;
+    const savedRacer = <?= json_encode($values['racer'] ?? '') ?>;
+
+    const API_URL = window.location.origin
+                  + window.location.pathname.replace(/\/pages\/[^\/]+$/, '')
+                  + '/api/get_options.php';
+
+    function resetSelect(el, placeholder) {
+        el.innerHTML = `<option value="">${placeholder}</option>`;
+        el.disabled = true;
+    }
+
+    function populate(el, items, savedValue, emptyLabel) {
+        el.innerHTML = `<option value="">${emptyLabel}</option>`;
+        items.forEach(item => {
+            const opt       = document.createElement('option');
+            opt.value       = item.name;
+            opt.textContent = item.name;
+            if (item.name === savedValue) opt.selected = true;
+            el.appendChild(opt);
+        });
+        el.disabled = items.length === 0;
+    }
+
+    async function loadOptions(versionId) {
+        if (!versionId) return;
+
+        resetSelect(selTrack, '— Loading... —');
+        resetSelect(selCar,   '— Loading... —');
+        resetSelect(selRacer, '— Loading... —');
+
+        try {
+            const [tracks, cars, racers] = await Promise.all([
+                fetch(`${API_URL}?type=tracks&version_id=${versionId}`).then(r => r.json()),
+                fetch(`${API_URL}?type=cars&version_id=${versionId}`).then(r => r.json()),
+                fetch(`${API_URL}?type=racers&version_id=${versionId}`).then(r => r.json()),
+            ]);
+
+            populate(selTrack,  tracks,  savedTrack,  tracks.length  ? '— Select Track —'  : '— No tracks —');
+            populate(selCar,    cars,    savedCar,    cars.length    ? '— Select Car —'    : '— No cars —');
+            populate(selRacer,  racers,  savedRacer,  racers.length  ? '— Select Racer —'  : '— No racers —');
+        } catch (e) {
+            console.error('get_options failed:', e);
+            resetSelect(selTrack, '— Error loading —');
+            resetSelect(selCar, '— Error loading —');
+            resetSelect(selRacer, '— Error loading —');
+        }
+    }
+
+    selVersion.addEventListener('change', function () {
+        if (this.value) {
+            loadOptions(this.value);
+        } else {
+            resetSelect(selTrack,  '— Select Version First —');
+            resetSelect(selCar,    '— Select Version First —');
+            resetSelect(selRacer,  '— Select Version First —');
+        }
+    });
+
+    if (selVersion.value) {
+        loadOptions(selVersion.value);
+    }
+})();
+</script>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

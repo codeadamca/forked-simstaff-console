@@ -6,13 +6,19 @@ require_once __DIR__ . '/../includes/helpers.php';
 
 requireLogin();
 
-if ($_SERVER['REQUEST_METHOD'] != 'POST') {
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: dashboard.php');
     exit();
 }
 
-$sessionId = (int)($_POST['session_id'] ?? 0);
-$eventId   = (int)($_POST['event_id']   ?? 0);
+$sessionId = (int) ($_POST['session_id'] ?? 0);
+$eventId   = (int) ($_POST['event_id']   ?? 0);
+$from      = trim($_POST['from']         ?? '');
+
+if ($sessionId === 0) {
+    header('Location: dashboard.php');
+    exit();
+}
 
 $conn = getConnection();
 $stmt = $conn->prepare('DELETE FROM sessions WHERE session_id = ?');
@@ -22,5 +28,12 @@ $stmt->close();
 $conn->close();
 
 setFlash('success', 'Session deleted.');
-header('Location: event_detail.php?id=' . $eventId);
+
+if ($from === 'sessions') {
+    header('Location: sessions.php');
+} elseif ($eventId > 0) {
+    header('Location: event_detail.php?id=' . $eventId);
+} else {
+    header('Location: dashboard.php');
+}
 exit();
