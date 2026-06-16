@@ -105,7 +105,7 @@ include __DIR__ . '/../includes/header.php';
                                         <input type="hidden" name="event_id" value="<?= $event['event_id'] ?>">
                                         <input type="hidden" name="status" value="live">
                                         <input type="hidden" name="redirect" value="manage_events.php">
-                                        <button type="submit" class="btn btn-secondary btn-sm">Force Live</button>
+                                        <button type="submit" class="btn btn-secondary btn-sm">Go Live</button>
                                     </form>
                                 <?php endif; ?>
 

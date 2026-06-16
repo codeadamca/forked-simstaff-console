@@ -32,20 +32,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     } elseif ($action === 'bulk_add') {
         $versionId = (int) ($_POST['version_id'] ?? 0);
-        $type      = $_POST['item_type'] ?? '';
-        $raw       = trim($_POST['items'] ?? '');
+        $type = $_POST['item_type'] ?? '';
+        $raw = trim($_POST['items'] ?? '');
 
         $allowed = ['game_tracks', 'game_cars', 'game_racers'];
-        $table   = 'game_' . $type;
+        $table = 'game_' . $type;
 
         if ($versionId > 0 && in_array($table, $allowed) && $raw !== '') {
             $items = preg_split('/[\n,]+/', $raw);
-            $stmt  = $conn->prepare("INSERT IGNORE INTO `$table` (version_id, name) VALUES (?, ?)");
+
+            $maxStmt = $conn->prepare("SELECT COALESCE(MAX(sort_order), 0) FROM `$table` WHERE version_id = ?");
+            $maxStmt->bind_param('i', $versionId);
+            $maxStmt->execute();
+            $maxStmt->bind_result($maxOrder);
+            $maxStmt->fetch();
+            $maxStmt->close();
+
+            $stmt = $conn->prepare("INSERT IGNORE INTO `$table` (version_id, name, sort_order) VALUES (?, ?, ?)");
             $count = 0;
             foreach ($items as $item) {
                 $item = trim($item);
                 if ($item !== '') {
-                    $stmt->bind_param('is', $versionId, $item);
+                    $maxOrder++;
+                    $stmt->bind_param('isi', $versionId, $item, $maxOrder);
                     $stmt->execute();
                     $count++;
                 }
@@ -55,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
     } elseif ($action === 'delete_item') {
-        $id    = (int) ($_POST['item_id']    ?? 0);
+        $id = (int) ($_POST['item_id'] ?? 0);
         $table = $_POST['item_table'] ?? '';
 
         $allowed = ['game_tracks', 'game_cars', 'game_racers'];
@@ -74,25 +83,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $versions = $conn->query('SELECT * FROM game_versions ORDER BY name ASC')
-                 ->fetch_all(MYSQLI_ASSOC);
+    ->fetch_all(MYSQLI_ASSOC);
 
 $activeVersionId = (int) ($_GET['version_id'] ?? ($versions[0]['id'] ?? 0));
 
 $tracks = $cars = $racers = [];
 if ($activeVersionId > 0) {
-    $stmt = $conn->prepare('SELECT * FROM game_tracks WHERE version_id = ? ORDER BY name ASC');
+    $stmt = $conn->prepare('SELECT * FROM game_tracks WHERE version_id = ? ORDER BY sort_order ASC, name ASC');
     $stmt->bind_param('i', $activeVersionId);
     $stmt->execute();
     $tracks = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
-    $stmt = $conn->prepare('SELECT * FROM game_cars WHERE version_id = ? ORDER BY name ASC');
+    $stmt = $conn->prepare('SELECT * FROM game_cars WHERE version_id = ? ORDER BY sort_order ASC, name ASC');
     $stmt->bind_param('i', $activeVersionId);
     $stmt->execute();
     $cars = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
-    $stmt = $conn->prepare('SELECT * FROM game_racers WHERE version_id = ? ORDER BY name ASC');
+    $stmt = $conn->prepare('SELECT * FROM game_racers WHERE version_id = ? ORDER BY sort_order ASC, name ASC');
     $stmt->bind_param('i', $activeVersionId);
     $stmt->execute();
     $racers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -106,7 +115,8 @@ include __DIR__ . '/../includes/header.php';
 ?>
 
 <?php if (isset($_SESSION['flash'])): ?>
-    <?php $flash = $_SESSION['flash']; unset($_SESSION['flash']); ?>
+    <?php $flash = $_SESSION['flash'];
+    unset($_SESSION['flash']); ?>
     <div class="alert alert-<?= htmlspecialchars($flash['type']) ?> mb-4">
         <?= htmlspecialchars($flash['message']) ?>
     </div>
@@ -126,7 +136,6 @@ include __DIR__ . '/../includes/header.php';
     <div class="card-body p-3" style="background: var(--bg-card);">
         <div class="row g-3 align-items-end">
 
-            <!-- Version selector + delete -->
             <div class="col-12 col-md-6">
                 <label class="form-label">Active Version</label>
                 <div class="d-flex gap-2">
@@ -145,22 +154,23 @@ include __DIR__ . '/../includes/header.php';
                     <?php endif; ?>
 
                     <?php if ($activeVersionId > 0): ?>
-                        <form method="POST" onsubmit="return confirm('Delete this version and ALL its tracks, cars and racers?')">
+                        <form method="POST"
+                            onsubmit="return confirm('Delete this version and ALL its tracks, cars and racers?')">
                             <input type="hidden" name="action" value="delete_version">
                             <input type="hidden" name="version_id" value="<?= $activeVersionId ?>">
-                            <button type="submit" class="btn btn-danger">🗑 Delete</button>
+                            <button type="submit" class="btn btn-danger">Delete</button>
                         </form>
                     <?php endif; ?>
                 </div>
             </div>
 
-            <!-- Add new version -->
             <div class="col-12 col-md-6">
                 <form method="POST" class="d-flex gap-2">
                     <input type="hidden" name="action" value="add_version">
                     <div class="flex-grow-1">
                         <label class="form-label">New Version</label>
-                        <input type="text" name="version_name" class="form-control" placeholder="e.g. F1 24, F1 23..." required>
+                        <input type="text" name="version_name" class="form-control" placeholder="e.g. F1 24, F1 23..."
+                            required>
                     </div>
                     <div class="d-flex align-items-end">
                         <button type="submit" class="btn btn-primary">+ Add</button>
@@ -174,73 +184,202 @@ include __DIR__ . '/../includes/header.php';
 
 <?php if ($activeVersionId > 0): ?>
 
-<!-- Tracks / Cars / Racers Grid -->
-<div class="row g-4">
+    <div class="row g-4">
 
-    <?php
-    $panels = [
-        ['label' => 'Tracks', 'type' => 'tracks', 'data' => $tracks, 'table' => 'game_tracks',  'placeholder' => "One per line or comma separated\ne.g. Monza\nSilverstone\nSpa"],
-        ['label' => 'Cars', 'type' => 'cars', 'data' => $cars, 'table' => 'game_cars',    'placeholder' => "One per line or comma separated\ne.g. Ferrari SF-24\nRed Bull RB20"],
-        ['label' => 'Racers', 'type' => 'racers','data' => $racers, 'table' => 'game_racers',  'placeholder' => "One per line or comma separated\ne.g. Leclerc\nVerstappen\nHamilton"],
-    ];
-    ?>
+        <?php
+        $panels = [
+            ['label' => 'Tracks', 'type' => 'tracks', 'data' => $tracks, 'table' => 'game_tracks', 'placeholder' => "One per line or comma separated\ne.g. Monza\nSilverstone\nSpa"],
+            ['label' => 'Cars', 'type' => 'cars', 'data' => $cars, 'table' => 'game_cars', 'placeholder' => "One per line or comma separated\ne.g. Ferrari SF-24\nRed Bull RB20"],
+            ['label' => 'Racers', 'type' => 'racers', 'data' => $racers, 'table' => 'game_racers', 'placeholder' => "One per line or comma separated\ne.g. Leclerc\nVerstappen\nHamilton"],
+        ];
+        ?>
 
-    <?php foreach ($panels as $panel): ?>
-    <div class="col-12 col-md-4">
-        <div class="card h-100">
+        <?php foreach ($panels as $panel): ?>
+            <div class="col-12 col-md-4">
+                <div class="card h-100">
 
-            <div class="card-header">
-                <h3><?= $panel['label'] ?></h3>
-                <span class="text-muted" style="font-size:0.75rem; font-family:'Barlow Condensed',sans-serif; letter-spacing:0.05em;">
-                    <?= count($panel['data']) ?> item<?= count($panel['data']) !== 1 ? 's' : '' ?>
-                </span>
+                    <div class="card-header">
+                        <h3><?= $panel['label'] ?></h3>
+                        <span class="text-muted"
+                            style="font-size:0.75rem; font-family:'Barlow Condensed',sans-serif; letter-spacing:0.05em;">
+                            <?= count($panel['data']) ?> item<?= count($panel['data']) !== 1 ? 's' : '' ?>
+                        </span>
+                    </div>
+
+                    <!-- Bulk add form -->
+                    <div class="p-3" style="border-bottom: 1px solid var(--border); background: var(--bg-card);">
+                        <form method="POST" class="d-flex flex-column gap-2">
+                            <input type="hidden" name="action" value="bulk_add">
+                            <input type="hidden" name="version_id" value="<?= $activeVersionId ?>">
+                            <input type="hidden" name="item_type" value="<?= $panel['type'] ?>">
+                            <textarea name="items" class="form-control" rows="3"
+                                placeholder="<?= htmlspecialchars($panel['placeholder']) ?>"></textarea>
+                            <button type="submit" class="btn btn-primary btn-sm">+ Add</button>
+                        </form>
+                    </div>
+
+                    <!-- Item list -->
+                    <ul class="manage-card__list sortable-list" data-table="<?= $panel['table'] ?>"
+                        id="list-<?= $panel['type'] ?>">
+                        <?php if (empty($panel['data'])): ?>
+                            <li class="manage-card__empty">No <?= $panel['type'] ?> yet.</li>
+                        <?php else: ?>
+                            <?php foreach ($panel['data'] as $item): ?>
+                                <li class="sortable-item" data-id="<?= $item['id'] ?>">
+                                    <span class="drag-handle" title="Drag to reorder">⠿</span>
+                                    <span class="item-name"><?= htmlspecialchars($item['name']) ?></span>
+                                    <form method="POST">
+                                        <input type="hidden" name="action" value="delete_item">
+                                        <input type="hidden" name="item_id" value="<?= $item['id'] ?>">
+                                        <input type="hidden" name="item_table" value="<?= $panel['table'] ?>">
+                                        <button type="submit" class="btn-icon" title="Delete">✕</button>
+                                    </form>
+                                </li>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </ul>
+
+                </div>
             </div>
+        <?php endforeach; ?>
 
-            <!-- Bulk add form -->
-            <div class="p-3" style="border-bottom: 1px solid var(--border); background: var(--bg-card);">
-                <form method="POST" class="d-flex flex-column gap-2">
-                    <input type="hidden" name="action" value="bulk_add">
-                    <input type="hidden" name="version_id" value="<?= $activeVersionId ?>">
-                    <input type="hidden" name="item_type" value="<?= $panel['type'] ?>">
-                    <textarea name="items" class="form-control" rows="3"
-                        placeholder="<?= htmlspecialchars($panel['placeholder']) ?>"></textarea>
-                    <button type="submit" class="btn btn-primary btn-sm">+ Add</button>
-                </form>
-            </div>
-
-            <!-- Item list -->
-            <ul class="manage-card__list">
-                <?php if (empty($panel['data'])): ?>
-                    <li class="manage-card__empty">No <?= $panel['type'] ?> yet.</li>
-                <?php else: ?>
-                    <?php foreach ($panel['data'] as $item): ?>
-                        <li>
-                            <span><?= htmlspecialchars($item['name']) ?></span>
-                            <form method="POST">
-                                <input type="hidden" name="action" value="delete_item">
-                                <input type="hidden" name="item_id" value="<?= $item['id'] ?>">
-                                <input type="hidden" name="item_table" value="<?= $panel['table'] ?>">
-                                <button type="submit" class="btn-icon" title="Delete">✕</button>
-                            </form>
-                        </li>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </ul>
-
-        </div>
     </div>
-    <?php endforeach; ?>
-
-</div>
 
 <?php else: ?>
     <p class="empty-state">No versions yet. Add one above to get started.</p>
 <?php endif; ?>
 
+<style>
+    .sortable-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        transition: background 0.15s;
+    }
+
+    .sortable-item:last-child {
+        border-bottom: none;
+    }
+
+    .sortable-item.dragging {
+        opacity: 0.4;
+    }
+
+    .sortable-item.drag-over {
+        background: rgba(255, 255, 255, 0.08);
+        border-top: 2px solid #ffffff;
+    }
+
+    .drag-handle {
+        cursor: grab;
+        color: var(--text-muted, #666);
+        font-size: 1.1rem;
+        line-height: 1;
+        user-select: none;
+        flex-shrink: 0;
+    }
+
+    .drag-handle:active {
+        cursor: grabbing;
+    }
+
+    .item-name {
+        flex: 1;
+        font-size: 0.9rem;
+    }
+
+    .sortable-item form {
+        flex-shrink: 0;
+    }
+
+    .reorder-saving {
+        opacity: 0.5;
+        pointer-events: none;
+    }
+</style>
+
 <script>
-function switchVersion(id) {
-    window.location.href = 'manage_games.php?version_id=' + id;
-}
+    (function () {
+        const API = window.location.origin
+            + window.location.pathname.replace(/\/pages\/[^\/]+$/, '')
+            + '/api/reorder_item.php';
+
+        async function saveOrder(list) {
+            const table = list.dataset.table;
+            const ids = [...list.querySelectorAll('.sortable-item')].map(el => el.dataset.id);
+
+            list.classList.add('reorder-saving');
+
+            const body = new URLSearchParams();
+            body.append('table', table);
+            ids.forEach((id, i) => body.append(`ids[${i}]`, id));
+
+            try {
+                await fetch(API, { method: 'POST', body });
+            } catch (e) {
+                console.error('Reorder failed:', e);
+            }
+
+            list.classList.remove('reorder-saving');
+        }
+
+        let dragged = null;
+
+        document.querySelectorAll('.sortable-list').forEach(list => {
+            list.addEventListener('dragstart', e => {
+                const item = e.target.closest('.sortable-item');
+                if (!item) return;
+                dragged = item;
+                item.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+
+            list.addEventListener('dragend', e => {
+                const item = e.target.closest('.sortable-item');
+                if (item) item.classList.remove('dragging');
+                list.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+                dragged = null;
+            });
+
+            list.addEventListener('dragover', e => {
+                e.preventDefault();
+                const target = e.target.closest('.sortable-item');
+                if (!target || target === dragged) return;
+                list.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+                target.classList.add('drag-over');
+            });
+
+            list.addEventListener('drop', e => {
+                e.preventDefault();
+                const target = e.target.closest('.sortable-item');
+                if (!target || !dragged || target === dragged) return;
+                target.classList.remove('drag-over');
+
+                const items = [...list.querySelectorAll('.sortable-item')];
+                const fromIdx = items.indexOf(dragged);
+                const toIdx = items.indexOf(target);
+
+                if (fromIdx < toIdx) {
+                    list.insertBefore(dragged, target.nextElementSibling);
+                } else {
+                    list.insertBefore(dragged, target);
+                }
+
+                saveOrder(list);
+            });
+        });
+
+        document.querySelectorAll('.sortable-item').forEach(item => {
+            item.setAttribute('draggable', 'true');
+        });
+
+    })();
+
+    function switchVersion(id) {
+        window.location.href = 'manage_games.php?version_id=' + id;
+    }
 </script>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

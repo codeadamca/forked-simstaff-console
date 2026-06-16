@@ -64,7 +64,7 @@ if ($filterEventId > 0) {
     }
 }
 
-$flash     = getFlash();
+$flash = getFlash();
 $pageTitle = 'Sessions';
 include __DIR__ . '/../includes/header.php';
 ?>
@@ -88,8 +88,7 @@ include __DIR__ . '/../includes/header.php';
         <select name="event_id" id="event_id" class="filter-bar__select">
             <option value="0">All Events</option>
             <?php foreach ($allEvents as $ev): ?>
-                <option value="<?= $ev['event_id'] ?>"
-                    <?= (int) $ev['event_id'] === $filterEventId ? 'selected' : '' ?>>
+                <option value="<?= $ev['event_id'] ?>" <?= (int) $ev['event_id'] === $filterEventId ? 'selected' : '' ?>>
                     <?= htmlspecialchars($ev['event_name']) ?>
                 </option>
             <?php endforeach; ?>
@@ -104,41 +103,43 @@ include __DIR__ . '/../includes/header.php';
         <?php if (empty($sessions)): ?>
             <p class="empty-state">No sessions found for this event.</p>
         <?php else: ?>
-        <div class="table-wrapper">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Event</th>
-                        <th>Participant</th>
-                        <th>Best Lap</th>
-                        <th>Date</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($sessions as $s): ?>
-                    <tr>
-                        <td>
-                            <a href="sessions.php?event_id=<?= $s['event_id'] ?>" class="table-link">
-                                <?= htmlspecialchars($s['event_name'] ?? '—') ?>
-                            </a>
-                        </td>
-                        <td><?= htmlspecialchars($s['participant_name'] ?? '—') ?></td>
-                        <td><strong><?= $s['best_lap_time'] !== '' ? htmlspecialchars($s['best_lap_time']) : '—' ?></strong></td>
-                        <td><?= $s['created_at'] ? date('M j, Y', strtotime($s['created_at'])) : '—' ?></td>
-                        <td class="actions">
-                            <form method="POST" action="session_delete.php">
-                                <input type="hidden" name="session_id" value="<?= $s['session_id'] ?>">
-                                <input type="hidden" name="redirect"   value="sessions.php?event_id=<?= $filterEventId ?>">
-                                <button type="submit" class="btn btn--danger btn--sm"
-                                        onclick="return confirm('Delete this session?')">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Event</th>
+                            <th>Participant</th>
+                            <th>Best Lap</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($sessions as $s): ?>
+                            <tr>
+                                <td>
+                                    <a href="sessions.php?event_id=<?= $s['event_id'] ?>" class="table-link">
+                                        <?= htmlspecialchars($s['event_name'] ?? '—') ?>
+                                    </a>
+                                </td>
+                                <td><?= htmlspecialchars($s['participant_name'] ?? '—') ?></td>
+                                <td><strong><?= $s['best_lap_time'] !== '' ? htmlspecialchars($s['best_lap_time']) : '—' ?></strong>
+                                </td>
+                                <td><?= $s['created_at'] ? date('M j, Y', strtotime($s['created_at'])) : '—' ?></td>
+                                <td class="actions">
+                                    <form method="POST" action="session_delete.php">
+                                        <input type="hidden" name="session_id" value="<?= $s['session_id'] ?>">
+                                        <input type="hidden" name="redirect"
+                                            value="sessions.php?event_id=<?= $filterEventId ?>">
+                                        <button type="submit" class="btn btn--danger btn--sm"
+                                            onclick="return confirm('Delete this session?')">Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         <?php endif; ?>
     </section>
 

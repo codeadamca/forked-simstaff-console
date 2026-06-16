@@ -42,7 +42,8 @@ include __DIR__ . '/../includes/header.php';
 ?>
 
 <?php if (isset($_SESSION['flash'])): ?>
-    <?php $flash = $_SESSION['flash']; unset($_SESSION['flash']); ?>
+    <?php $flash = $_SESSION['flash'];
+    unset($_SESSION['flash']); ?>
     <div class="alert alert-<?= htmlspecialchars($flash['type']) ?> mb-4">
         <?= htmlspecialchars($flash['message']) ?>
     </div>
@@ -58,7 +59,8 @@ include __DIR__ . '/../includes/header.php';
 <div class="card mb-4">
     <div class="card-header">
         <h3>Events</h3>
-        <span class="text-muted" style="font-size:0.75rem; font-family:'Barlow Condensed',sans-serif; letter-spacing:0.05em;">
+        <span class="text-muted"
+            style="font-size:0.75rem; font-family:'Barlow Condensed',sans-serif; letter-spacing:0.05em;">
             <?= count($events) ?> total
         </span>
     </div>
@@ -81,49 +83,51 @@ include __DIR__ . '/../includes/header.php';
                     </tr>
                 </thead>
                 <tbody>
-                <?php foreach ($events as $event):
-                    [$statusKey, $statusLabel, $statusClass] = resolveEventStatus(
-                        $event['status'] ?? 'auto',
-                        $event['event_date']
-                    );
-                ?>
-                    <tr>
-                        <td><strong><?= htmlspecialchars($event['event_name']) ?></strong></td>
-                        <td><?= htmlspecialchars($event['event_date']) ?></td>
-                        <td><?= htmlspecialchars($event['version_name'] ?? '—') ?></td>
-                        <td><?= htmlspecialchars($event['track'] ?? '—') ?></td>
-                        <td><?= htmlspecialchars($event['racer'] ?? '—') ?></td>
-                        <td><?= (int) $event['session_count'] ?></td>
-                        <td>
-                            <span class="status-badge status-<?= $statusKey ?>">
-                                <span class="status-dot"></span>
-                                <?= $statusLabel ?>
-                            </span>
-                        </td>
-                        <td>
-                            <div class="d-flex flex-wrap gap-1">
+                    <?php foreach ($events as $event):
+                        [$statusKey, $statusLabel, $statusClass] = resolveEventStatus(
+                            $event['status'] ?? 'auto',
+                            $event['event_date']
+                        );
+                        ?>
+                        <tr>
+                            <td><strong><?= htmlspecialchars($event['event_name']) ?></strong></td>
+                            <td><?= htmlspecialchars($event['event_date']) ?></td>
+                            <td><?= htmlspecialchars($event['version_name'] ?? '—') ?></td>
+                            <td><?= htmlspecialchars($event['track'] ?? '—') ?></td>
+                            <td><?= htmlspecialchars($event['racer'] ?? '—') ?></td>
+                            <td><?= (int) $event['session_count'] ?></td>
+                            <td>
+                                <span class="status-badge status-<?= $statusKey ?>">
+                                    <span class="status-dot"></span>
+                                    <?= $statusLabel ?>
+                                </span>
+                            </td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-1">
 
-                                <a href="event_form.php?id=<?= $event['event_id'] ?>" class="btn btn-secondary btn-sm">Edit</a>
-                                <a href="sessions.php?event_id=<?= $event['event_id'] ?>" class="btn btn-secondary btn-sm">Sessions</a>
+                                    <a href="event_form.php?id=<?= $event['event_id'] ?>"
+                                        class="btn btn-secondary btn-sm">Edit</a>
+                                    <a href="sessions.php?event_id=<?= $event['event_id'] ?>"
+                                        class="btn btn-secondary btn-sm">Sessions</a>
 
-                                <?php if ($statusKey === 'live'): ?>
-                                    <form method="POST" action="event_status.php">
-                                        <input type="hidden" name="event_id" value="<?= $event['event_id'] ?>">
-                                        <input type="hidden" name="status" value="completed">
-                                        <button type="submit" class="btn btn-secondary btn-sm">End Event</button>
-                                    </form>
-                                <?php elseif ($statusKey === 'upcoming'): ?>
-                                    <form method="POST" action="event_status.php">
-                                        <input type="hidden" name="event_id" value="<?= $event['event_id'] ?>">
-                                        <input type="hidden" name="status" value="live">
-                                        <button type="submit" class="btn btn-secondary btn-sm">Force Live</button>
-                                    </form>
-                                <?php endif; ?>
+                                    <?php if ($statusKey === 'live'): ?>
+                                        <form method="POST" action="event_status.php">
+                                            <input type="hidden" name="event_id" value="<?= $event['event_id'] ?>">
+                                            <input type="hidden" name="status" value="completed">
+                                            <button type="submit" class="btn btn-secondary btn-sm">End Event</button>
+                                        </form>
+                                    <?php elseif ($statusKey === 'upcoming'): ?>
+                                        <form method="POST" action="event_status.php">
+                                            <input type="hidden" name="event_id" value="<?= $event['event_id'] ?>">
+                                            <input type="hidden" name="status" value="live">
+                                            <button type="submit" class="btn btn-secondary btn-sm">Force Live</button>
+                                        </form>
+                                    <?php endif; ?>
 
-                            </div>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -134,7 +138,8 @@ include __DIR__ . '/../includes/header.php';
 <div class="card mb-4">
     <div class="card-header">
         <h3>Recent Laps</h3>
-        <span class="text-muted" style="font-size:0.75rem; font-family:'Barlow Condensed',sans-serif; letter-spacing:0.05em;">
+        <span class="text-muted"
+            style="font-size:0.75rem; font-family:'Barlow Condensed',sans-serif; letter-spacing:0.05em;">
             Last 5
         </span>
     </div>
@@ -154,15 +159,15 @@ include __DIR__ . '/../includes/header.php';
                     </tr>
                 </thead>
                 <tbody>
-                <?php foreach ($recentLaps as $lap): ?>
-                    <tr>
-                        <td><?= htmlspecialchars($lap['event_name']) ?></td>
-                        <td><?= htmlspecialchars($lap['racer']) ?></td>
-                        <td><?= htmlspecialchars($lap['track']) ?></td>
-                        <td><?= (int) $lap['lap_number'] ?></td>
-                        <td><strong><?= htmlspecialchars($lap['lap_time']) ?></strong></td>
-                    </tr>
-                <?php endforeach; ?>
+                    <?php foreach ($recentLaps as $lap): ?>
+                        <tr>
+                            <td><?= htmlspecialchars($lap['event_name']) ?></td>
+                            <td><?= htmlspecialchars($lap['racer']) ?></td>
+                            <td><?= htmlspecialchars($lap['track']) ?></td>
+                            <td><?= (int) $lap['lap_number'] ?></td>
+                            <td><strong><?= htmlspecialchars($lap['lap_time']) ?></strong></td>
+                        </tr>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
