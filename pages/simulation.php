@@ -8,14 +8,14 @@ requireLogin();
 
 $conn = getConnection();
 $sessionId = (int) ($_GET['session_id'] ?? 0);
-$eventId = (int) ($_GET['event_id'] ?? 0);
+$eventId   = (int) ($_GET['event_id']   ?? 0);
 
-// Load events for dropdown
-$events = $conn->query('
+$events = $conn->query("
     SELECT event_id, event_name, car, track, racer
-    FROM events
-    ORDER BY event_date DESC
-')->fetch_all(MYSQLI_ASSOC);
+    FROM   events
+    WHERE  status = 'live'
+    ORDER  BY event_date DESC
+")->fetch_all(MYSQLI_ASSOC);
 
 $conn->close();
 
@@ -36,35 +36,41 @@ include __DIR__ . '/../includes/header.php';
     <?php if ($sessionId === 0): ?>
         <div id="event-selector" style="margin-bottom: 40px;">
 
-            <div class="sim-pre__group">
-                <label for="sel-event">SELECT EVENT</label>
-                <select id="sel-event">
-                    <option value="">— Select Event —</option>
-                    <?php foreach ($events as $ev): ?>
-                        <option value="<?= $ev['event_id'] ?>" data-car="<?= htmlspecialchars($ev['car'] ?? '') ?>"
-                            data-track="<?= htmlspecialchars($ev['track'] ?? '') ?>"
-                            data-racer="<?= htmlspecialchars($ev['racer'] ?? '') ?>"
-                            data-name="<?= htmlspecialchars($ev['event_name']) ?>">
-                            <?= htmlspecialchars($ev['event_name']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
+            <?php if (empty($events)): ?>
+                <p class="sim-empty">
+                    No live events available.
+                    <a href="/pages/manage_events.php">Go live on an event first.</a>
+                </p>
+            <?php else: ?>
 
-            <!-- Event preview -->
-            <div id="event-preview" class="sim-pre__preview" style="display:none;">
-                <div class="sim-pre__detail"><span>Car</span> <strong id="prev-car">—</strong></div>
-                <div class="sim-pre__detail"><span>Track</span> <strong id="prev-track">—</strong></div>
-                <div class="sim-pre__detail"><span>Racer</span> <strong id="prev-racer">—</strong></div>
-            </div>
+                <div class="sim-pre__group">
+                    <label for="sel-event">SELECT EVENT</label>
+                    <select id="sel-event">
+                        <option value="">— Select Event —</option>
+                        <?php foreach ($events as $ev): ?>
+                            <option value="<?= $ev['event_id'] ?>"
+                                    data-car="<?= htmlspecialchars($ev['car']     ?? '') ?>"
+                                    data-track="<?= htmlspecialchars($ev['track'] ?? '') ?>"
+                                    data-racer="<?= htmlspecialchars($ev['racer'] ?? '') ?>"
+                                    data-name="<?= htmlspecialchars($ev['event_name'])   ?>">
+                                <?= htmlspecialchars($ev['event_name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
 
-            <p id="selector-status" style="font-size:0.8rem; min-height:1.2em; color:#8888aa; margin-bottom:0;"></p>
+                <!-- Event preview -->
+                <div id="event-preview" class="sim-pre__preview" style="display:none;">
+                    <div class="sim-pre__detail"><span>Car</span>   <strong id="prev-car">—</strong></div>
+                    <div class="sim-pre__detail"><span>Track</span> <strong id="prev-track">—</strong></div>
+                    <div class="sim-pre__detail"><span>Racer</span> <strong id="prev-racer">—</strong></div>
+                </div>
+
+                <p id="selector-status" style="font-size:0.8rem; min-height:1.2em; color:#8888aa; margin-bottom:0;"></p>
+
+            <?php endif; ?>
 
         </div>
-    <?php endif; ?>
-
-    <?php if (empty($events)): ?>
-        <p class="sim-empty">No events found. <a href="/pages/manage_events.php">Create one first.</a></p>
     <?php endif; ?>
 
     <!-- ── Track ── -->
@@ -84,8 +90,8 @@ include __DIR__ . '/../includes/header.php';
     <!-- ── Buttons ── -->
     <div class="sim-controls">
         <button class="btn-sim btn-start" id="startBtn" <?= $sessionId === 0 ? 'disabled' : '' ?>>START</button>
-        <button class="btn-sim btn-lap" id="btn-complete-lap" disabled>COMPLETE LAP</button>
-        <button class="btn-sim btn-end" id="endBtn" disabled>END SESSION</button>
+        <button class="btn-sim btn-lap"   id="btn-complete-lap" disabled>COMPLETE LAP</button>
+        <button class="btn-sim btn-end"   id="endBtn"           disabled>END SESSION</button>
     </div>
 
     <!-- ── Lap list ── -->
@@ -97,63 +103,61 @@ include __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
-    (function () {
-        const sel = document.getElementById('sel-event');
-        const btn = document.getElementById('startBtn');
-        const status = document.getElementById('selector-status');
-        const preview = document.getElementById('event-preview');
-        const prevCar = document.getElementById('prev-car');
-        const prevTrack = document.getElementById('prev-track');
-        const prevRacer = document.getElementById('prev-racer');
-        const simSubtitle = document.getElementById('simSubtitle');
+(function () {
+    const sel         = document.getElementById('sel-event');
+    const btn         = document.getElementById('startBtn');
+    const status      = document.getElementById('selector-status');
+    const preview     = document.getElementById('event-preview');
+    const prevCar     = document.getElementById('prev-car');
+    const prevTrack   = document.getElementById('prev-track');
+    const prevRacer   = document.getElementById('prev-racer');
+    const simSubtitle = document.getElementById('simSubtitle');
 
-        if (!sel) return;
+    if (!sel) return;
 
-        sel.addEventListener('change', async function () {
-            const opt = this.options[this.selectedIndex];
+    sel.addEventListener('change', async function () {
+        const opt = this.options[this.selectedIndex];
 
-            if (!this.value) {
-                preview.style.display = 'none';
-                btn.disabled = true;
-                status.textContent = '';
-                return;
-            }
-
-            prevCar.textContent = opt.dataset.car || '—';
-            prevTrack.textContent = opt.dataset.track || '—';
-            prevRacer.textContent = opt.dataset.racer || '—';
-            preview.style.display = 'block';
-
+        if (!this.value) {
+            preview.style.display = 'none';
             btn.disabled = true;
-            status.textContent = 'Creating session…';
+            status.textContent = '';
+            return;
+        }
 
-            try {
-                const res = await fetch('/api/create_session.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ event_id: parseInt(this.value) }),
-                });
-                const data = await res.json();
+        prevCar.textContent   = opt.dataset.car   || '—';
+        prevTrack.textContent = opt.dataset.track  || '—';
+        prevRacer.textContent = opt.dataset.racer  || '—';
+        preview.style.display = 'block';
 
-                if (data.session_id) {
-                    history.replaceState(null, '', '?session_id=' + data.session_id);
+        btn.disabled = true;
+        status.textContent = 'Creating session…';
 
-                    status.textContent = '✅ Session #' + data.session_id + ' ready — press START';
-                    if (simSubtitle) {
-                        simSubtitle.innerHTML =
-                            'Session #' + data.session_id +
-                            ' &nbsp;|&nbsp; ' + (opt.dataset.name || opt.textContent.trim());
-                    }
+        try {
+            const res  = await fetch('/api/create_session.php', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ event_id: parseInt(this.value) }),
+            });
+            const data = await res.json();
 
-                    btn.disabled = false;
-                } else {
-                    status.textContent = '❌ ' + (data.error ?? 'Could not create session.');
+            if (data.session_id) {
+                history.replaceState(null, '', '?session_id=' + data.session_id);
+                status.textContent = '✅ Session #' + data.session_id + ' ready — press START';
+                if (simSubtitle) {
+                    simSubtitle.innerHTML =
+                        'Session #' + data.session_id +
+                        ' &nbsp;|&nbsp; ' + (opt.dataset.name || opt.textContent.trim());
                 }
-            } catch (e) {
-                status.textContent = '❌ Network error.';
+                btn.disabled = false;
+            } else {
+                status.textContent = '❌ ' + (data.error ?? 'Could not create session.');
             }
-        });
-    })();
+        } catch (e) {
+            status.textContent = '❌ Network error.';
+        }
+    });
+})();
 </script>
 
 <script src="/assets/js/simulation.js"></script>

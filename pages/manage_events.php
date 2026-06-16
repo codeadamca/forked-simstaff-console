@@ -36,22 +36,22 @@ $conn->close();
 
 $pageTitle = 'Manage Events';
 include __DIR__ . '/../includes/header.php';
+
+function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
 ?>
 
 <?php if (isset($_SESSION['flash'])): ?>
     <?php $flash = $_SESSION['flash']; unset($_SESSION['flash']); ?>
-    <div class="alert alert-<?= htmlspecialchars($flash['type']) ?> mb-4">
-        <?= htmlspecialchars($flash['message']) ?>
+    <div class="alert alert-<?= h($flash['type']) ?> mb-4">
+        <?= h($flash['message']) ?>
     </div>
 <?php endif; ?>
 
-<!-- Page Header -->
 <div class="page-header">
     <h2>Manage Events</h2>
     <a href="event_form.php" class="btn btn-primary">+ New Event</a>
 </div>
 
-<!-- Events Table -->
 <div class="card">
     <?php if (empty($events)): ?>
         <p class="empty-state">No events yet. Create one to get started.</p>
@@ -79,20 +79,23 @@ include __DIR__ . '/../includes/header.php';
                     );
                 ?>
                     <tr>
-                        <td><strong><?= htmlspecialchars($event['event_name']) ?></strong></td>
-                        <td><?= htmlspecialchars($event['event_date']) ?></td>
-                        <td><?= htmlspecialchars($event['version_name'] ?? '—') ?></td>
-                        <td><?= htmlspecialchars($event['track'] ?? '—') ?></td>
-                        <td><?= htmlspecialchars($event['car'] ?? '—') ?></td>
-                        <td><?= htmlspecialchars($event['racer'] ?? '—') ?></td>
+                        <td><strong><?= h($event['event_name']) ?></strong></td>
+                        <td><?= h($event['event_date']) ?></td>
+                        <td><?= h($event['version_name'] ?? '—') ?></td>
+                        <td><?= h($event['track'] ?? '—') ?></td>
+                        <td><?= h($event['car'] ?? '—') ?></td>
+                        <td><?= h($event['racer'] ?? '—') ?></td>
                         <td><?= (int) $event['session_count'] ?></td>
-                        <td><span class="badge <?= $statusClass ?>"><?= $statusLabel ?></span></td>
+                        <td>
+                            <span class="status-badge status-<?= $statusKey ?>">
+                                <span class="status-dot"></span>
+                                <?= h($statusLabel) ?>
+                            </span>
+                        </td>
                         <td>
                             <div class="d-flex flex-wrap gap-1">
-
                                 <a href="event_form.php?id=<?= $event['event_id'] ?>" class="btn btn-secondary btn-sm">Edit</a>
                                 <a href="sessions.php?event_id=<?= $event['event_id'] ?>" class="btn btn-secondary btn-sm">Sessions</a>
-
                                 <?php if ($statusKey === 'live'): ?>
                                     <form method="POST" action="event_status.php">
                                         <input type="hidden" name="event_id" value="<?= $event['event_id'] ?>">
@@ -108,24 +111,11 @@ include __DIR__ . '/../includes/header.php';
                                         <button type="submit" class="btn btn-secondary btn-sm">Go Live</button>
                                     </form>
                                 <?php endif; ?>
-
-                                <?php if ($statusKey !== 'canceled' && $statusKey !== 'completed'): ?>
-                                    <form method="POST" action="event_status.php" onsubmit="return confirm('Cancel this event?')">
-                                        <input type="hidden" name="event_id" value="<?= $event['event_id'] ?>">
-                                        <input type="hidden" name="status" value="canceled">
-                                        <input type="hidden" name="redirect" value="manage_events.php">
-                                        <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
-                                    </form>
-                                <?php else: ?>
-                                    <button class="btn btn-danger btn-sm" disabled>Cancel</button>
-                                <?php endif; ?>
-
                                 <form method="POST" onsubmit="return confirm('Delete this event and all its sessions? This cannot be undone.')">
                                     <input type="hidden" name="_action" value="delete">
                                     <input type="hidden" name="event_id" value="<?= $event['event_id'] ?>">
                                     <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                                 </form>
-
                             </div>
                         </td>
                     </tr>
