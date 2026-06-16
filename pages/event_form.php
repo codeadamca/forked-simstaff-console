@@ -142,6 +142,13 @@ $pageTitle = $isEdit ? 'Edit Event' : 'New Event';
 include __DIR__ . '/../includes/header.php';
 ?>
 
+<?php if (isset($_SESSION['flash'])): ?>
+    <?php $flash = $_SESSION['flash']; unset($_SESSION['flash']); ?>
+    <div class="alert alert-<?= htmlspecialchars($flash['type']) ?> mb-4">
+        <?= htmlspecialchars($flash['message']) ?>
+    </div>
+<?php endif; ?>
+
 <!-- Page Header -->
 <div class="page-header">
     <h2><?= $pageTitle ?></h2>
@@ -202,7 +209,7 @@ include __DIR__ . '/../includes/header.php';
                             <option value="">— Select Version —</option>
                             <?php foreach ($versions as $v): ?>
                                 <option value="<?= $v['id'] ?>"
-                                    <?= (int) $values['version_id'] === $v['id'] ? 'selected' : '' ?>>
+                                    <?= (int) $values['version_id'] === (int) $v['id'] ? 'selected' : '' ?>>
                                     <?= htmlspecialchars($v['name']) ?>
                                 </option>
                             <?php endforeach; ?>
@@ -291,10 +298,6 @@ include __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
-const APP_BASE = "<?= rtrim(str_replace($_SERVER['DOCUMENT_ROOT'], '', __DIR__ . '/..'), '/') ?>";
-</script>
-
-<script>
 (function () {
     const selVersion = document.getElementById('sel-version');
     const selTrack   = document.getElementById('sel-track');
@@ -326,7 +329,7 @@ const APP_BASE = "<?= rtrim(str_replace($_SERVER['DOCUMENT_ROOT'], '', __DIR__ .
         el.disabled = items.length === 0;
     }
 
-    async function loadOptions(versionId) {
+    async function loadOptions(versionId, restoreTrack = '', restoreCar = '', restoreRacer = '') {
         if (!versionId) return;
 
         resetSelect(selTrack, '— Loading... —');
@@ -340,9 +343,9 @@ const APP_BASE = "<?= rtrim(str_replace($_SERVER['DOCUMENT_ROOT'], '', __DIR__ .
                 fetch(`${API_URL}?type=racers&version_id=${versionId}`).then(r => r.json()),
             ]);
 
-            populate(selTrack,  tracks,  savedTrack,  tracks.length  ? '— Select Track —'  : '— No tracks —');
-            populate(selCar,    cars,    savedCar,    cars.length    ? '— Select Car —'    : '— No cars —');
-            populate(selRacer,  racers,  savedRacer,  racers.length  ? '— Select Racer —'  : '— No racers —');
+            populate(selTrack,  tracks,  restoreTrack,  tracks.length  ? '— Select Track —'  : '— No tracks —');
+            populate(selCar,    cars,    restoreCar,    cars.length    ? '— Select Car —'    : '— No cars —');
+            populate(selRacer,  racers,  restoreRacer,  racers.length  ? '— Select Racer —'  : '— No racers —');
         } catch (e) {
             console.error('get_options failed:', e);
             resetSelect(selTrack, '— Error loading —');
@@ -361,8 +364,9 @@ const APP_BASE = "<?= rtrim(str_replace($_SERVER['DOCUMENT_ROOT'], '', __DIR__ .
         }
     });
 
+    // Show saved selections when click edit
     if (selVersion.value) {
-        loadOptions(selVersion.value);
+        loadOptions(selVersion.value, savedTrack, savedCar, savedRacer);
     }
 })();
 </script>
