@@ -232,7 +232,8 @@ function emptyClass(bool $condition): string
                                 class="form-select <?= emptyClass($values['track'] === '') ?>" required
                                 <?= dis($selectedVersion === 0) ?>>
                                 <option value="" disabled selected>
-                                    <?= $selectedVersion === 0 ? 'Select Version First' : 'Select Track' ?></option>
+                                    <?= $selectedVersion === 0 ? 'Select Version First' : 'Select Track' ?>
+                                </option>
                                 <?php foreach ($tracks as $t): ?>
                                     <option value="<?= h($t['name']) ?>" <?= sel($values['track'], $t['name']) ?>>
                                         <?= h($t['name']) ?>
@@ -245,7 +246,8 @@ function emptyClass(bool $condition): string
                             <select id="sel-car" name="car" class="form-select <?= emptyClass($values['car'] === '') ?>"
                                 required <?= dis($selectedVersion === 0) ?>>
                                 <option value="" disabled selected>
-                                    <?= $selectedVersion === 0 ? 'Select Version First' : 'Select Car' ?></option>
+                                    <?= $selectedVersion === 0 ? 'Select Version First' : 'Select Car' ?>
+                                </option>
                                 <?php foreach ($cars as $c): ?>
                                     <option value="<?= h($c['name']) ?>" <?= sel($values['car'], $c['name']) ?>>
                                         <?= h($c['name']) ?>
@@ -260,7 +262,8 @@ function emptyClass(bool $condition): string
                             class="form-select <?= emptyClass($values['racer'] === '') ?>" required
                             <?= dis($selectedVersion === 0) ?>>
                             <option value="" disabled selected>
-                                <?= $selectedVersion === 0 ? 'Select Version First' : 'Select Racer' ?></option>
+                                <?= $selectedVersion === 0 ? 'Select Version First' : 'Select Racer' ?>
+                            </option>
                             <?php foreach ($racers as $r): ?>
                                 <option value="<?= h($r['name']) ?>" <?= sel($values['racer'], $r['name']) ?>>
                                     <?= h($r['name']) ?>

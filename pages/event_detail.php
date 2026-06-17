@@ -21,7 +21,6 @@ if (!$event) {
     exit();
 }
 
-// Load sessions — newest first (best_lap_time is a string, not sortable by value)
 $stmt = $conn->prepare('SELECT * FROM sessions WHERE event_id = ? ORDER BY created_at DESC');
 $stmt->bind_param('i', $eventId);
 $stmt->execute();
