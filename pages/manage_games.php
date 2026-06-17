@@ -227,7 +227,27 @@ include __DIR__ . '/../includes/header.php';
                             <?php foreach ($panel['data'] as $item): ?>
                                 <li class="sortable-item" data-id="<?= $item['id'] ?>">
                                     <span class="drag-handle" title="Drag to reorder">⠿</span>
+
+                                    <!-- ── Photo thumbnail ── -->
+                                    <div class="item-photo-wrap">
+                                        <?php if (!empty($item['image'])): ?>
+                                            <img src="<?= htmlspecialchars($item['image']) ?>" class="item-thumb"
+                                                id="thumb-<?= $panel['table'] ?>-<?= $item['id'] ?>"
+                                                alt="<?= htmlspecialchars($item['name']) ?>">
+                                        <?php else: ?>
+                                            <div class="item-thumb item-thumb--empty" id="thumb-<?= $panel['table'] ?>-<?= $item['id'] ?>">
+                                                📷
+                                            </div>
+                                        <?php endif; ?>
+                                        <label class="item-photo-btn" title="Upload photo"
+                                            for="upload-<?= $panel['table'] ?>-<?= $item['id'] ?>">✎</label>
+                                        <input type="file" id="upload-<?= $panel['table'] ?>-<?= $item['id'] ?>"
+                                            class="item-upload-input" accept="image/*" data-table="<?= $panel['table'] ?>"
+                                            data-id="<?= $item['id'] ?>" style="display:none;">
+                                    </div>
+
                                     <span class="item-name"><?= htmlspecialchars($item['name']) ?></span>
+
                                     <form method="POST">
                                         <input type="hidden" name="action" value="delete_item">
                                         <input type="hidden" name="item_id" value="<?= $item['id'] ?>">
@@ -250,11 +270,12 @@ include __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 
 <style>
+    /* ── Sortable rows ── */
     .sortable-item {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
+        gap: 10px;
+        padding: 6px 12px;
         border-bottom: 1px solid var(--border);
         transition: background 0.15s;
     }
@@ -268,15 +289,14 @@ include __DIR__ . '/../includes/header.php';
     }
 
     .sortable-item.drag-over {
-        background: rgba(255, 255, 255, 0.08);
-        border-top: 2px solid #ffffff;
+        background: rgba(255, 255, 255, 0.06);
+        border-top: 2px solid #e10600;
     }
 
     .drag-handle {
         cursor: grab;
-        color: var(--text-muted, #666);
-        font-size: 1.1rem;
-        line-height: 1;
+        color: #444;
+        font-size: 1rem;
         user-select: none;
         flex-shrink: 0;
     }
@@ -287,7 +307,13 @@ include __DIR__ . '/../includes/header.php';
 
     .item-name {
         flex: 1;
-        font-size: 0.9rem;
+        font-size: 0.88rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        color: #eee;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .sortable-item form {
@@ -298,9 +324,93 @@ include __DIR__ . '/../includes/header.php';
         opacity: 0.5;
         pointer-events: none;
     }
+
+    /* ── Photo cell ── */
+    .item-photo-wrap {
+        position: relative;
+        flex-shrink: 0;
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .item-thumb {
+        width: 48px;
+        height: 48px;
+        object-fit: cover;
+        display: block;
+        border-radius: 8px;
+        border: 1px solid #2a2a2a;
+        transition: filter 0.2s;
+    }
+
+    .item-thumb--empty {
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #141414;
+        border: 1px dashed #333;
+        border-radius: 8px;
+        font-size: 1.1rem;
+        color: #444;
+    }
+
+    /* Hover overlay — pencil icon */
+    .item-photo-btn {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(225, 6, 0, 0.72);
+        border-radius: 8px;
+        font-size: 0.85rem;
+        color: #fff;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.15s;
+    }
+
+    .item-photo-wrap:hover .item-photo-btn {
+        opacity: 1;
+    }
+
+    .item-photo-wrap:hover .item-thumb {
+        filter: brightness(0.5);
+    }
+
+    /* Upload pulse */
+    .item-thumb.uploading {
+        opacity: 0.4;
+        animation: pulse 0.8s infinite alternate;
+    }
+
+    @keyframes pulse {
+        to {
+            opacity: 0.9;
+        }
+    }
+
+    /* ── Panel accent lines ── */
+    #list-tracks .sortable-item {
+        border-left: 3px solid #0057ff;
+    }
+
+    #list-cars .sortable-item {
+        border-left: 3px solid #e10600;
+    }
+
+    #list-racers .sortable-item {
+        border-left: 3px solid #00ff88;
+    }
 </style>
 
+
 <script>
+    /* ── drag/drop reorder ── */
     (function () {
         const API = window.location.origin
             + window.location.pathname.replace(/\/pages\/[^\/]+$/, '')
@@ -309,19 +419,12 @@ include __DIR__ . '/../includes/header.php';
         async function saveOrder(list) {
             const table = list.dataset.table;
             const ids = [...list.querySelectorAll('.sortable-item')].map(el => el.dataset.id);
-
             list.classList.add('reorder-saving');
-
             const body = new URLSearchParams();
             body.append('table', table);
             ids.forEach((id, i) => body.append(`ids[${i}]`, id));
-
-            try {
-                await fetch(API, { method: 'POST', body });
-            } catch (e) {
-                console.error('Reorder failed:', e);
-            }
-
+            try { await fetch(API, { method: 'POST', body }); }
+            catch (e) { console.error('Reorder failed:', e); }
             list.classList.remove('reorder-saving');
         }
 
@@ -335,14 +438,12 @@ include __DIR__ . '/../includes/header.php';
                 item.classList.add('dragging');
                 e.dataTransfer.effectAllowed = 'move';
             });
-
             list.addEventListener('dragend', e => {
                 const item = e.target.closest('.sortable-item');
                 if (item) item.classList.remove('dragging');
                 list.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
                 dragged = null;
             });
-
             list.addEventListener('dragover', e => {
                 e.preventDefault();
                 const target = e.target.closest('.sortable-item');
@@ -350,31 +451,79 @@ include __DIR__ . '/../includes/header.php';
                 list.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
                 target.classList.add('drag-over');
             });
-
             list.addEventListener('drop', e => {
                 e.preventDefault();
                 const target = e.target.closest('.sortable-item');
                 if (!target || !dragged || target === dragged) return;
                 target.classList.remove('drag-over');
-
                 const items = [...list.querySelectorAll('.sortable-item')];
                 const fromIdx = items.indexOf(dragged);
                 const toIdx = items.indexOf(target);
-
-                if (fromIdx < toIdx) {
-                    list.insertBefore(dragged, target.nextElementSibling);
-                } else {
-                    list.insertBefore(dragged, target);
-                }
-
+                if (fromIdx < toIdx) list.insertBefore(dragged, target.nextElementSibling);
+                else list.insertBefore(dragged, target);
                 saveOrder(list);
             });
         });
 
-        document.querySelectorAll('.sortable-item').forEach(item => {
-            item.setAttribute('draggable', 'true');
-        });
+        document.querySelectorAll('.sortable-item').forEach(item => item.setAttribute('draggable', 'true'));
+    })();
 
+    /* ── photo upload ── */
+    (function () {
+        const UPLOAD_API = window.location.origin
+            + window.location.pathname.replace(/\/pages\/[^\/]+$/, '')
+            + '/api/upload_image.php';
+
+        document.querySelectorAll('.item-upload-input').forEach(input => {
+            input.addEventListener('change', async function () {
+                if (!this.files[0]) return;
+
+                const table = this.dataset.table;
+                const id = this.dataset.id;
+                const thumbId = 'thumb-' + table + '-' + id;
+                const thumb = document.getElementById(thumbId);
+
+                if (thumb) thumb.classList.add('uploading');
+
+                const fd = new FormData();
+                fd.append('table', table);
+                fd.append('id', id);
+                fd.append('image', this.files[0]);
+
+                try {
+                    const res = await fetch(UPLOAD_API, { method: 'POST', body: fd });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        // Replace placeholder or update existing img
+                        const wrap = thumb.parentElement;
+                        wrap.innerHTML = `
+                            <img src="${data.path}?t=${Date.now()}"
+                                 class="item-thumb"
+                                 id="${thumbId}"
+                                 alt="">
+                            <label class="item-photo-btn" title="Upload photo"
+                                   for="upload-${table}-${id}">✎</label>
+                            <input type="file"
+                                   id="upload-${table}-${id}"
+                                   class="item-upload-input"
+                                   accept="image/*"
+                                   data-table="${table}"
+                                   data-id="${id}"
+                                   style="display:none;">
+                        `;
+                        // Re-bind the new input
+                        wrap.querySelector('.item-upload-input').addEventListener('change', arguments.callee);
+                    } else {
+                        alert('Upload failed: ' + (data.error ?? 'Unknown error'));
+                        if (thumb) thumb.classList.remove('uploading');
+                    }
+                } catch (e) {
+                    alert('Network error during upload.');
+                    if (thumb) thumb.classList.remove('uploading');
+                }
+            });
+        });
     })();
 
     function switchVersion(id) {
