@@ -62,10 +62,7 @@ function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8')
                     <tr>
                         <th>Event</th>
                         <th>Date</th>
-                        <th>Version</th>
-                        <th>Track</th>
-                        <th>Car</th>
-                        <th>Racer</th>
+                        <th>Details</th>
                         <th>Sessions</th>
                         <th>Status</th>
                         <th>Actions</th>
@@ -81,10 +78,30 @@ function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8')
                     <tr>
                         <td><strong><?= h($event['event_name']) ?></strong></td>
                         <td><?= h($event['event_date']) ?></td>
-                        <td><?= h($event['version_name'] ?? '—') ?></td>
-                        <td><?= h($event['track'] ?? '—') ?></td>
-                        <td><?= h($event['car'] ?? '—') ?></td>
-                        <td><?= h($event['racer'] ?? '—') ?></td>
+                        <td>
+                            <div class="event-details">
+                                <?php if (!empty($event['version_name'])): ?>
+                                    <span class="detail-tag detail-version">
+                                        <?= h($event['version_name']) ?>
+                                    </span>
+                                <?php endif; ?>
+                                <?php if (!empty($event['track'])): ?>
+                                    <span class="detail-tag detail-track">
+                                        <?= h($event['track']) ?>
+                                    </span>
+                                <?php endif; ?>
+                                <?php if (!empty($event['car'])): ?>
+                                    <span class="detail-tag detail-car">
+                                        <?= h($event['car']) ?>
+                                    </span>
+                                <?php endif; ?>
+                                <?php if (!empty($event['racer'])): ?>
+                                    <span class="detail-tag detail-racer">
+                                        <?= h($event['racer']) ?>
+                                    </span>
+                                <?php endif; ?>
+                            </div>
+                        </td>
                         <td><?= (int) $event['session_count'] ?></td>
                         <td>
                             <span class="status-badge status-<?= $statusKey ?>">
@@ -94,8 +111,10 @@ function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8')
                         </td>
                         <td>
                             <div class="d-flex flex-wrap gap-1">
-                                <a href="event_form.php?id=<?= $event['event_id'] ?>" class="btn btn-secondary btn-sm">Edit</a>
-                                <a href="sessions.php?event_id=<?= $event['event_id'] ?>" class="btn btn-secondary btn-sm">Sessions</a>
+                                <a href="event_form.php?id=<?= $event['event_id'] ?>"
+                                    class="btn btn-secondary btn-sm">Edit</a>
+                                <a href="sessions.php?event_id=<?= $event['event_id'] ?>"
+                                    class="btn btn-secondary btn-sm">Sessions</a>
                                 <?php if ($statusKey === 'live'): ?>
                                     <form method="POST" action="event_status.php">
                                         <input type="hidden" name="event_id" value="<?= $event['event_id'] ?>">
@@ -111,7 +130,8 @@ function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8')
                                         <button type="submit" class="btn btn-secondary btn-sm">Go Live</button>
                                     </form>
                                 <?php endif; ?>
-                                <form method="POST" onsubmit="return confirm('Delete this event and all its sessions? This cannot be undone.')">
+                                <form method="POST"
+                                    onsubmit="return confirm('Delete this event and all its sessions? This cannot be undone.')">
                                     <input type="hidden" name="_action" value="delete">
                                     <input type="hidden" name="event_id" value="<?= $event['event_id'] ?>">
                                     <button type="submit" class="btn btn-danger btn-sm">Delete</button>

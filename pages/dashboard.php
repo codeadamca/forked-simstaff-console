@@ -1,9 +1,5 @@
 <?php
 session_start();
-// ini_set('display_errors', 1);
-// ini_set('display_startup_errors', 1);
-// error_reporting(E_ALL);
-
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
@@ -49,7 +45,6 @@ include __DIR__ . '/../includes/header.php';
     </div>
 <?php endif; ?>
 
-<!-- Page Header -->
 <div class="page-header">
     <h2>Dashboard</h2>
     <a href="event_form.php" class="btn btn-primary">+ New Event</a>
@@ -74,9 +69,7 @@ include __DIR__ . '/../includes/header.php';
                     <tr>
                         <th>Event</th>
                         <th>Date</th>
-                        <th>Version</th>
-                        <th>Track</th>
-                        <th>Racer</th>
+                        <th>Details</th>
                         <th>Sessions</th>
                         <th>Status</th>
                         <th>Actions</th>
@@ -92,9 +85,25 @@ include __DIR__ . '/../includes/header.php';
                         <tr>
                             <td><strong><?= htmlspecialchars($event['event_name']) ?></strong></td>
                             <td><?= htmlspecialchars($event['event_date']) ?></td>
-                            <td><?= htmlspecialchars($event['version_name'] ?? '—') ?></td>
-                            <td><?= htmlspecialchars($event['track'] ?? '—') ?></td>
-                            <td><?= htmlspecialchars($event['racer'] ?? '—') ?></td>
+                            <td>
+                                <div class="event-details">
+                                    <?php if (!empty($event['version_name'])): ?>
+                                        <span class="detail-tag detail-version">
+                                            <?= htmlspecialchars($event['version_name']) ?>
+                                        </span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($event['track'])): ?>
+                                        <span class="detail-tag detail-track">
+                                            <?= htmlspecialchars($event['track']) ?>
+                                        </span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($event['racer'])): ?>
+                                        <span class="detail-tag detail-racer">
+                                            <?= htmlspecialchars($event['racer']) ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
                             <td><?= (int) $event['session_count'] ?></td>
                             <td>
                                 <span class="status-badge status-<?= $statusKey ?>">
@@ -104,7 +113,6 @@ include __DIR__ . '/../includes/header.php';
                             </td>
                             <td>
                                 <div class="d-flex flex-wrap gap-1">
-
                                     <a href="event_form.php?id=<?= $event['event_id'] ?>"
                                         class="btn btn-secondary btn-sm">Edit</a>
                                     <a href="sessions.php?event_id=<?= $event['event_id'] ?>"
@@ -123,7 +131,6 @@ include __DIR__ . '/../includes/header.php';
                                             <button type="submit" class="btn btn-secondary btn-sm">Force Live</button>
                                         </form>
                                     <?php endif; ?>
-
                                 </div>
                             </td>
                         </tr>
@@ -152,8 +159,7 @@ include __DIR__ . '/../includes/header.php';
                 <thead>
                     <tr>
                         <th>Event</th>
-                        <th>Racer</th>
-                        <th>Track</th>
+                        <th>Details</th>
                         <th>Lap #</th>
                         <th>Lap Time</th>
                     </tr>
@@ -162,8 +168,20 @@ include __DIR__ . '/../includes/header.php';
                     <?php foreach ($recentLaps as $lap): ?>
                         <tr>
                             <td><?= htmlspecialchars($lap['event_name']) ?></td>
-                            <td><?= htmlspecialchars($lap['racer']) ?></td>
-                            <td><?= htmlspecialchars($lap['track']) ?></td>
+                            <td>
+                                <div class="event-details">
+                                    <?php if (!empty($lap['track'])): ?>
+                                        <span class="detail-tag detail-track">
+                                            <?= htmlspecialchars($lap['track']) ?>
+                                        </span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($lap['racer'])): ?>
+                                        <span class="detail-tag detail-racer">
+                                            <?= htmlspecialchars($lap['racer']) ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
                             <td><?= (int) $lap['lap_number'] ?></td>
                             <td><strong><?= htmlspecialchars($lap['lap_time']) ?></strong></td>
                         </tr>
