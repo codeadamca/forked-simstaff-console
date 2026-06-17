@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Jun 16, 2026 at 12:37 PM
+-- Generation Time: Jun 17, 2026 at 03:12 PM
 -- Server version: 5.7.24
 -- PHP Version: 8.3.1
 
@@ -91,6 +91,7 @@ CREATE TABLE `game_cars` (
   `id` int(11) NOT NULL,
   `version_id` int(11) NOT NULL,
   `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `image` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `sort_order` int(11) NOT NULL DEFAULT '0'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -98,17 +99,17 @@ CREATE TABLE `game_cars` (
 -- Dumping data for table `game_cars`
 --
 
-INSERT INTO `game_cars` (`id`, `version_id`, `name`, `sort_order`) VALUES
-(5, 1, 'SF-24', 2),
-(6, 1, 'AMR24', 1),
-(7, 1, 'A524', 0),
-(8, 1, 'VF-24', 3),
-(9, 1, 'C44', 4),
-(10, 1, 'MCL38', 5),
-(11, 2, 'Alpine 2025', 11),
-(12, 2, 'HAAS', 12),
-(13, 2, 'Aston Martin', 13),
-(14, 2, 'Williams 2025', 14);
+INSERT INTO `game_cars` (`id`, `version_id`, `name`, `image`, `sort_order`) VALUES
+(5, 1, 'SF-24', NULL, 1),
+(6, 1, 'AMR24', '/assets/uploads/game_cars_6_1781677359.jpg', 0),
+(7, 1, 'A524', NULL, 2),
+(8, 1, 'VF-24', NULL, 3),
+(9, 1, 'C44', NULL, 4),
+(10, 1, 'MCL38', NULL, 5),
+(11, 2, 'Alpine 2025', NULL, 11),
+(12, 2, 'HAAS', NULL, 12),
+(13, 2, 'Aston Martin', NULL, 13),
+(14, 2, 'Williams 2025', NULL, 14);
 
 -- --------------------------------------------------------
 
@@ -133,6 +134,7 @@ CREATE TABLE `game_racers` (
   `id` int(11) NOT NULL,
   `version_id` int(11) NOT NULL,
   `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `image` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `sort_order` int(11) NOT NULL DEFAULT '0'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -140,17 +142,17 @@ CREATE TABLE `game_racers` (
 -- Dumping data for table `game_racers`
 --
 
-INSERT INTO `game_racers` (`id`, `version_id`, `name`, `sort_order`) VALUES
-(2, 1, 'LeLerc', 2),
-(4, 1, 'Lando Norris (#4)', 4),
-(5, 1, 'Oscar Piastri (#81)', 5),
-(7, 2, 'Alexander Albon', 7),
-(9, 2, 'Andrea Kimi Antonelli', 9),
-(10, 2, 'Oliver Bearman', 10),
-(11, 2, 'Gabriel Bortoleto', 11),
-(12, 2, 'Jack Doohan', 12),
-(13, 1, 'Valtteri Bottas (#77).', 13),
-(14, 1, 'Guanyu Zhou (#24)', 14);
+INSERT INTO `game_racers` (`id`, `version_id`, `name`, `image`, `sort_order`) VALUES
+(2, 1, 'LeLerc', NULL, 1),
+(4, 1, 'Lando Norris (#4)', NULL, 2),
+(5, 1, 'Oscar Piastri (#81)', NULL, 0),
+(7, 2, 'Alexander Albon', NULL, 7),
+(9, 2, 'Andrea Kimi Antonelli', NULL, 9),
+(10, 2, 'Oliver Bearman', NULL, 10),
+(11, 2, 'Gabriel Bortoleto', NULL, 11),
+(12, 2, 'Jack Doohan', NULL, 12),
+(13, 1, 'Valtteri Bottas (#77).', NULL, 3),
+(14, 1, 'Guanyu Zhou (#24)', NULL, 4);
 
 -- --------------------------------------------------------
 
@@ -162,6 +164,7 @@ CREATE TABLE `game_tracks` (
   `id` int(11) NOT NULL,
   `version_id` int(11) NOT NULL,
   `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `image` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `sort_order` int(11) NOT NULL DEFAULT '0'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -169,19 +172,19 @@ CREATE TABLE `game_tracks` (
 -- Dumping data for table `game_tracks`
 --
 
-INSERT INTO `game_tracks` (`id`, `version_id`, `name`, `sort_order`) VALUES
-(3, 2, 'Spa', 3),
-(4, 1, 'Bahrain International Circuit', 4),
-(5, 1, 'Jeddah Corniche Circuit', 5),
-(6, 1, 'Albert Park', 6),
-(7, 1, 'Suzuka', 7),
-(8, 1, 'Shanghai International Circuit', 8),
-(9, 2, 'Circuit de Spa-Francorchamps', 9),
-(10, 2, 'Hungaroring', 10),
-(11, 2, 'Circuit Zandvoort', 11),
-(12, 2, 'Baku City Circuit', 12),
-(13, 2, 'Singapore Marina Bay', 13),
-(14, 1, 'monza', 14);
+INSERT INTO `game_tracks` (`id`, `version_id`, `name`, `image`, `sort_order`) VALUES
+(3, 2, 'Spa', NULL, 3),
+(4, 1, 'Bahrain International Circuit', '/assets/uploads/game_tracks_4_1781677650.png', 4),
+(5, 1, 'Jeddah Corniche Circuit', NULL, 5),
+(6, 1, 'Albert Park', NULL, 6),
+(7, 1, 'Suzuka', NULL, 7),
+(8, 1, 'Shanghai International Circuit', NULL, 8),
+(9, 2, 'Circuit de Spa-Francorchamps', NULL, 9),
+(10, 2, 'Hungaroring', NULL, 10),
+(11, 2, 'Circuit Zandvoort', NULL, 11),
+(12, 2, 'Baku City Circuit', NULL, 12),
+(13, 2, 'Singapore Marina Bay', NULL, 13),
+(14, 1, 'monza', NULL, 14);
 
 -- --------------------------------------------------------
 
@@ -234,7 +237,10 @@ INSERT INTO `laps` (`id`, `session_id`, `lap_number`, `lap_time_ms`, `lap_time`,
 (13, 6, 5, 10479, '00:10', '2026-06-10 13:18:05'),
 (14, 12, 1, 888, '00:00', '2026-06-16 06:59:58'),
 (15, 12, 2, 904, '00:00', '2026-06-16 06:59:58'),
-(16, 12, 3, 721, '00:00', '2026-06-16 06:59:58');
+(16, 12, 3, 721, '00:00', '2026-06-16 06:59:58'),
+(17, 17, 1, 4409, '00:04', '2026-06-17 06:08:12'),
+(18, 18, 1, 4224, '00:04', '2026-06-17 06:08:25'),
+(19, 18, 2, 1526, '00:01', '2026-06-17 06:08:25');
 
 -- --------------------------------------------------------
 
@@ -299,7 +305,10 @@ INSERT INTO `sessions` (`session_id`, `event_id`, `f1_version`, `participant_nam
 (13, 4, 'F1 2025', 'Fernando Alonso', 'HAAS', 'Circuit de Spa-Francorchamps', '', '2026-06-16 04:45:33'),
 (14, 4, 'F1 2025', 'Fernando Alonso', 'HAAS', 'Circuit de Spa-Francorchamps', '', '2026-06-16 05:46:16'),
 (15, 4, 'F1 2025', 'Alexander Albon', 'HAAS', 'Circuit de Spa-Francorchamps', '', '2026-06-16 08:25:19'),
-(16, 4, 'F1 2025', 'Alexander Albon', 'HAAS', 'Circuit de Spa-Francorchamps', '', '2026-06-16 08:35:23');
+(16, 4, 'F1 2025', 'Alexander Albon', 'HAAS', 'Circuit de Spa-Francorchamps', '', '2026-06-16 08:35:23'),
+(17, 4, 'F1 2025', 'Alexander Albon', 'HAAS', 'Circuit de Spa-Francorchamps', '', '2026-06-17 02:08:01'),
+(18, 4, 'F1 2025', 'Alexander Albon', 'HAAS', 'Circuit de Spa-Francorchamps', '', '2026-06-17 02:08:17'),
+(21, 4, 'F1 2025', 'Alexander Albon', 'HAAS', 'Circuit de Spa-Francorchamps', '', '2026-06-17 03:40:29');
 
 --
 -- Indexes for dumped tables
@@ -445,7 +454,7 @@ ALTER TABLE `game_versions`
 -- AUTO_INCREMENT for table `laps`
 --
 ALTER TABLE `laps`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
 
 --
 -- AUTO_INCREMENT for table `results`
@@ -463,7 +472,7 @@ ALTER TABLE `rigs`
 -- AUTO_INCREMENT for table `sessions`
 --
 ALTER TABLE `sessions`
-  MODIFY `session_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
+  MODIFY `session_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
 
 --
 -- Constraints for dumped tables
